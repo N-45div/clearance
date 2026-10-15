@@ -2,6 +2,7 @@ import { Hono } from "hono";
 import { ask, type Turn } from "./agent.ts";
 import { read } from "./db.ts";
 import * as fleet from "./graph/fleet.ts";
+import { checkFeed } from "./ingest/feed.ts";
 import { allowAsk, clientIp } from "./limits.ts";
 import { issueDraft, vexDocument, type Frame, type VerdictRow } from "./report.ts";
 
@@ -124,12 +125,15 @@ api.post("/ask", async (c) => {
   }
 });
 
-// FalkorDB Cloud's free tier stops an instance after a day without use; Vercel calls this daily.
-api.get("/cron/keepwarm", async (c) => {
+// Vercel calls this once a day: it keeps the free FalkorDB Cloud instance in use (it stops after a
+// day idle) and loads any new Go advisory that touches the fleet. It writes, so it needs CRON_SECRET.
+api.get("/cron/daily", async (c) => {
   const secret = process.env.CRON_SECRET;
-  if (secret && c.req.header("authorization") !== `Bearer ${secret}`) return c.json({ error: "unauthorized" }, 401);
+  if (!secret) return c.json({ error: "CRON_SECRET is not set" }, 503);
+  if (c.req.header("authorization") !== `Bearer ${secret}`) return c.json({ error: "unauthorized" }, 401);
   const [r] = await read<{ repos: number }>(`MATCH (r:Repo) RETURN count(r) AS repos`);
-  return c.json({ ok: true, repos: r?.repos ?? 0, at: new Date().toISOString() });
+  const feed = await checkFeed();
+  return c.json({ ok: true, repos: r?.repos ?? 0, feed, at: new Date().toISOString() });
 });
 
 app.route("/api", api);
