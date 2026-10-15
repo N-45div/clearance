@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { isShipping } from "../src/graph/verdicts.ts";
+import { isShipping, scanPredates } from "../src/graph/verdicts.ts";
 
 test("entry points under examples, tests and tooling do not ship", () => {
   assert.equal(isShipping("examples/secrets/mock_server.go"), false);
@@ -12,4 +12,11 @@ test("entry points under examples, tests and tooling do not ship", () => {
   assert.equal(isShipping("internal/testingstuff.go"), true);
   // Unknown entry file: never downgrade on a guess.
   assert.equal(isShipping(null), true);
+});
+
+test("an advisory newer than the scan's vulndb snapshot is never decided from missing paths", () => {
+  assert.equal(scanPredates("2026-10-08T22:31:09Z", "2026-10-15T10:00:00Z"), true);
+  assert.equal(scanPredates("2026-10-08T22:31:09Z", "2026-10-08T22:31:09Z"), false);
+  assert.equal(scanPredates("2026-10-08T22:31:09Z", "2026-07-07T22:15:29Z"), false);
+  assert.equal(scanPredates(null, "2026-10-15T10:00:00Z"), false);
 });

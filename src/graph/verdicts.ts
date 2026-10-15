@@ -32,16 +32,20 @@ export const NON_SHIPPING =
 // No file (an entry in a dependency, or unknown) counts as shipped, so a verdict is never downgraded on a guess.
 export const isShipping = (file: string | null | undefined) => !file || !NON_SHIPPING.test(file);
 
+// True when the advisory appeared after the vulndb snapshot the repo's scan used.
+export const scanPredates = (scanDb: string | null, published: string) =>
+  !!scanDb && Date.parse(published) > Date.parse(scanDb);
+
 type Candidate = {
   repo: string; sha: string; scanOk: boolean | null; scanExit: number | null; scanNote: string | null; repoModule: string;
-  advisory: string; modified: string; bumps: string[];
+  scanDb: string | null; advisory: string; published: string; modified: string; bumps: string[];
 };
 
 // Every pair a version-only scanner would flag: the repo builds with a module version in the advisory's range.
 export const CANDIDATES = `
 MATCH (r:Repo)-[:REQUIRES|BUILT_WITH]->(v:ModuleVersion)-[m:VULNERABLE_TO]->(a:Advisory)
 RETURN r.name AS repo, r.sha AS sha, r.scanOk AS scanOk, r.scanExit AS scanExit, r.scanNote AS scanNote, r.module AS repoModule,
-       a.id AS advisory, a.modified AS modified,
+       r.scanDb AS scanDb, a.id AS advisory, a.published AS published, a.modified AS modified,
        collect(v.path + '@' + v.version + '=>' + coalesce(m.fixed, '')) AS bumps
 ORDER BY repo, advisory`;
 
@@ -75,6 +79,14 @@ export async function decide(c: Candidate): Promise<Decision> {
     return {
       ...base, status: "under_investigation",
       reason: `${c.bumps.map((b) => b.split("=>")[0]).join(", ")} in range, but the reachability scan of this commit failed (${c.scanNote ?? `exit ${c.scanExit ?? "none"}`}), so nothing is claimed`,
+    };
+  }
+  // The scan only knew the advisories in its vulndb snapshot. A newer one has no call paths or imports
+  // in the graph yet, so "no path" would prove nothing.
+  if (scanPredates(c.scanDb, c.published)) {
+    return {
+      ...base, status: "under_investigation",
+      reason: `${c.bumps.map((b) => b.split("=>")[0]).join(", ")} in range; the advisory was published after this commit was scanned (vulndb ${c.scanDb?.slice(0, 10)}), so it needs a rescan`,
     };
   }
   const paths = await read<{ path: string[]; modules: string[]; entryFile: string | null }>(CALL_PATH, {
