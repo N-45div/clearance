@@ -26,8 +26,8 @@ export async function write<T = Record<string, unknown>>(cypher: string, params:
 }
 
 // Everything the agent and the API run goes through GRAPH.RO_QUERY, so no tool can change the graph.
-export async function read<T = Record<string, unknown>>(cypher: string, params: Params = {}): Promise<T[]> {
+export async function read<T = Record<string, unknown>>(cypher: string, params: Params = {}, timeoutMs = 10_000): Promise<T[]> {
   const g = await openGraph();
-  const reply = await g.roQuery<T>(cypher, { params: params as never, TIMEOUT: 10_000 });
+  const reply = await g.roQuery<T>(cypher, { params: params as never, TIMEOUT: timeoutMs });
   return reply.data ?? [];
 }

@@ -23,7 +23,12 @@ Edges: (Repo)-[:REQUIRES {direct}]->(ModuleVersion)-[:OF]->(Module); (Repo)-[:BU
 (Advisory)-[:VULNERABLE_PACKAGE]->(Package); (Repo)-[:IMPORTS]->(Package); (Repo)-[:ENTRY]->(Func);
 (Func)-[:CALLS {repo}]->(Func); (Func)-[:DEFINED_IN {line}]->(File)-[:OWNED_BY]->(Team);
 (Verdict)-[:FOR]->(Repo), (Verdict)-[:ABOUT]->(Advisory), (Verdict)-[:ROUTED_TO]->(Team), (Verdict)-[:SUPERSEDES]->(Verdict).
-Verdict.status: affected | not_affected | under_investigation | fixed. Only current:true verdicts are live.`;
+Verdict.status: affected | not_affected | under_investigation | fixed. Only current:true verdicts are live.
+CALLS edges exist only on paths toward vulnerable functions (they are govulncheck evidence, not a full call graph).
+DEFINED_IN exists only for functions in a repo's own code (the callers), never for dependency functions.
+Examples:
+- repos' own call sites into a package: MATCH (c:Func)-[k:CALLS]->(d:Func) WHERE d.package STARTS WITH 'golang.org/x/net/http2' MATCH (c)-[l:DEFINED_IN]->(f:File {repo: k.repo}) RETURN k.repo, f.path, l.line
+- live verdicts a team must act on: MATCH (v:Verdict {current: true, status: 'affected'})-[:ROUTED_TO]->(:Team {handle: '@grafana/k6-core'}) RETURN v.key, v.file`;
 
 export const TOOLS: Record<string, Tool> = {
   fleet_summary: {
@@ -61,10 +66,16 @@ export const TOOLS: Record<string, Tool> = {
     parameters: obj({}),
     run: () => fleet.teams(),
   },
+  call_sites: {
+    description: "Where each repo's own code calls into a package (prefix match, e.g. golang.org/x/net/http2), with file:line and owning team. Only calls on paths toward vulnerable code are known.",
+    parameters: obj({ package: str("Go package path or prefix") }, ["package"]),
+    run: (a) => fleet.callSites(a.package ?? ""),
+  },
   run_cypher: {
     description: `Run one read-only Cypher query on the FalkorDB graph when no other tool answers the question. Use $-free literal queries, return at most 50 rows. Schema:\n${SCHEMA}`,
     parameters: obj({ cypher: str("a read-only Cypher query") }, ["cypher"]),
-    run: async (a) => (await read(a.cypher ?? "")).slice(0, 50),
+    // A model-written query gets 5 s; FalkorDB aborts it after that.
+    run: async (a) => (await read(a.cypher ?? "", {}, 5_000)).slice(0, 50),
   },
 };
 
@@ -73,6 +84,8 @@ Rules:
 - Answer only from tool results. If the graph has no answer, say so.
 - When you say a repo is affected, name the call site (file:line if known) and the owning team. When you say not affected, give the justification.
 - "under_investigation" means the reachability scan failed; never present it as safe.
+- reach "examples_tests_only" means the only path starts in examples, tests or tooling (entryFile), not in shipped code: say so, and call it lower priority.
+- Use the counts the tools return; do not recount.
 - Standard-library verdicts assume the Go toolchain declared in the repo's go.mod.
 - Be brief: short sentences, plain words, lists for several repos.`;
 
@@ -97,6 +110,7 @@ async function chat(messages: ChatMessage[]) {
       })),
       max_completion_tokens: 4000,
     }),
+    signal: AbortSignal.timeout(60_000),
   });
   if (!res.ok) throw new Error(`OpenAI: HTTP ${res.status} ${(await res.text()).slice(0, 300)}`);
   const body = (await res.json()) as { choices: { message: Extract<ChatMessage, { role: "assistant" }> }[] };
@@ -122,7 +136,9 @@ export async function ask(question: string, history: Turn[] = [], maxSteps = 6):
       try {
         args = JSON.parse(call.function.arguments || "{}") as Record<string, string>;
         if (!tool) throw new Error(`unknown tool ${call.function.name}`);
+        const started = Date.now();
         const result = await tool.run(args);
+        console.log(`agent ${call.function.name} ${JSON.stringify(args).slice(0, 200)} ${Date.now() - started} ms`);
         steps.push({ tool: call.function.name, args, rows: rowsOf(result) });
         content = JSON.stringify(result).slice(0, 30_000);
       } catch (e) {

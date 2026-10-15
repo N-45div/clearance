@@ -69,7 +69,16 @@ export async function blastRadius(id: string) {
      ORDER BY CASE v.status WHEN 'affected' THEN 0 WHEN 'under_investigation' THEN 1 ELSE 2 END, repo`,
     { id },
   );
-  return { advisory: await advisory(id), repos };
+  const count = (s: string) => repos.filter((r) => r.status === s).length;
+  return {
+    advisory: await advisory(id),
+    counts: {
+      flagged: repos.length, affected: count("affected"), notAffected: count("not_affected"),
+      underInvestigation: count("under_investigation"),
+      examplesTestsOnly: repos.filter((r) => r.reach === "examples_tests_only").length,
+    },
+    repos,
+  };
 }
 
 // The call path behind one verdict, frame by frame, with file, line and owning team for the repo's own code.
@@ -165,5 +174,18 @@ export async function repoVerdicts(repo: string) {
             v.reach AS reach
      ORDER BY CASE v.status WHEN 'affected' THEN 0 WHEN 'under_investigation' THEN 1 ELSE 2 END, a.id`,
     { repo },
+  );
+}
+
+// Where each repo's own code calls into a package (prefix match), with file:line and owning team.
+export async function callSites(pkg: string) {
+  return read(
+    `MATCH (c:Func)-[k:CALLS]->(d:Func) WHERE d.package STARTS WITH $pkg
+     MATCH (c)-[l:DEFINED_IN]->(file:File {repo: k.repo})
+     OPTIONAL MATCH (file)-[:OWNED_BY]->(t:Team)
+     RETURN k.repo AS repo, file.path AS file, l.line AS line, c.name AS caller,
+            collect(DISTINCT d.package + '.' + d.name) AS calls, collect(DISTINCT t.handle) AS teams
+     ORDER BY repo, file, line`,
+    { pkg },
   );
 }
