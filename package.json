@@ -4,11 +4,14 @@
   "type": "module",
   "description": "Clear your Go fleet for a new CVE: every service gets \"affected\" with the call path, or \"not affected\" with the proof, from a FalkorDB graph.",
   "license": "MIT",
-  "engines": { "node": ">=24" },
+  "engines": {
+    "node": ">=24"
+  },
   "scripts": {
     "start": "node --no-warnings src/server.ts",
     "pin": "node --no-warnings src/ingest/pin.ts",
     "ingest": "node --no-warnings src/ingest/run.ts",
+    "decide": "node --no-warnings src/graph/verdicts.ts",
     "test": "node --no-warnings --test \"test/*.test.ts\"",
     "typecheck": "tsc -p tsconfig.json"
   },
