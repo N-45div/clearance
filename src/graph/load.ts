@@ -1,11 +1,12 @@
 // Writes the fleet into FalkorDB. Every loader is idempotent: re-running ingest replaces a repo's
 // facts with the ones at its current pinned commit.
 import { write } from "../db.ts";
-import { parseCodeowners, type OwnerRule } from "../ingest/codeowners.ts";
+import { ownersFor, parseCodeowners, type OwnerRule } from "../ingest/codeowners.ts";
 import { rawFile } from "../ingest/github.ts";
 import { parseGoMod, stdlibVersion, type GoMod } from "../ingest/gomod.ts";
 import type { GoAdvisory, Pair } from "../ingest/osv.ts";
 import type { FleetLock } from "../ingest/pin.ts";
+import { callFacts, funcKey, repoPath, type Frame, type Scan } from "../ingest/scans.ts";
 import { fixedAfter } from "../ingest/semver.ts";
 
 const key = (p: Pair) => `${p.path}@${p.version}`;
@@ -167,4 +168,81 @@ export async function loadMatches(hits: Map<string, string[]>, advisories: Map<s
     { edges },
   );
   return edges.length;
+}
+
+export type ScanStatus = { repo: string; ok: boolean; exit: number; toolchain: string };
+
+// Repo-scoped facts from govulncheck: IMPORTS, ENTRY, CALLS {repo}, and for frames in the repo's own
+// code, the file and the CODEOWNERS team that owns it.
+export async function loadScan(repo: RepoData, status: ScanStatus, scan: Scan | undefined) {
+  await write(
+    `MATCH (r:Repo {name: $repo})
+     SET r.scanOk = $ok, r.scanExit = $exit, r.scanToolchain = $toolchain,
+         r.scanner = $scanner, r.scanDb = $db
+     WITH r
+     OPTIONAL MATCH (r)-[e:IMPORTS|ENTRY]->()
+     DELETE e`,
+    {
+      repo: repo.name, ok: status.ok && !!scan?.config, exit: status.exit, toolchain: status.toolchain,
+      scanner: scan?.config?.scanner_version ?? null, db: scan?.config?.db_last_modified ?? null,
+    },
+  );
+  await write(`MATCH ()-[c:CALLS {repo: $repo}]->() DELETE c`, { repo: repo.name });
+  await write(`MATCH (f:File {repo: $repo}) DETACH DELETE f`, { repo: repo.name });
+  if (!scan || !status.ok) return { imports: 0, calls: 0, entries: 0, files: 0 };
+
+  const facts = callFacts(scan);
+  const node = (fr: Frame) => ({
+    key: funcKey(fr), pkg: fr.package ?? "", name: funcKey(fr).slice((fr.package ?? "").length + 1),
+    module: fr.module, path: repoPath(fr, repo.mod.module) ?? null,
+    line: fr.position?.line ?? null,
+  });
+  const calls = [...facts.calls.values()].map((c) => ({ from: node(c.from), to: node(c.to) }));
+  const entries = [...facts.entries.values()].map(node);
+
+  await write(
+    `UNWIND $pkgs AS p
+     MATCH (r:Repo {name: $repo})
+     MERGE (pkg:Package {path: p})
+     MERGE (r)-[:IMPORTS]->(pkg)`,
+    { repo: repo.name, pkgs: [...facts.imports] },
+  );
+  for (let i = 0; i < calls.length; i += 2000) {
+    await write(
+      `UNWIND $calls AS c
+       MERGE (a:Func {key: c.from.key})
+       ON CREATE SET a.package = c.from.pkg, a.name = c.from.name, a.module = c.from.module
+       MERGE (b:Func {key: c.to.key})
+       ON CREATE SET b.package = c.to.pkg, b.name = c.to.name, b.module = c.to.module
+       MERGE (a)-[:CALLS {repo: $repo}]->(b)`,
+      { repo: repo.name, calls: calls.slice(i, i + 2000) },
+    );
+  }
+  await write(
+    `UNWIND $entries AS e
+     MATCH (r:Repo {name: $repo}), (f:Func {key: e.key})
+     MERGE (r)-[:ENTRY]->(f)`,
+    { repo: repo.name, entries },
+  );
+
+  // Frames in the repo's own code carry a file and line; CODEOWNERS turns the file into a team.
+  const own = new Map<string, { key: string; path: string; line: number; teams: string[] }>();
+  for (const fr of [...calls.flatMap((c) => [c.from, c.to]), ...entries]) {
+    if (!fr.path || own.has(fr.key)) continue;
+    own.set(fr.key, { key: fr.key, path: fr.path, line: fr.line ?? 0, teams: ownersFor(repo.rules, fr.path)?.teams ?? [] });
+  }
+  await write(
+    `UNWIND $own AS o
+     MATCH (fn:Func {key: o.key})
+     MERGE (file:File {key: $repo + ':' + o.path})
+     ON CREATE SET file.repo = $repo, file.path = o.path
+     MERGE (fn)-[d:DEFINED_IN]->(file)
+     SET d.line = o.line
+     WITH file, o
+     UNWIND o.teams AS handle
+     MERGE (t:Team {handle: handle})
+     MERGE (file)-[:OWNED_BY]->(t)`,
+    { repo: repo.name, own: [...own.values()] },
+  );
+  return { imports: facts.imports.size, calls: calls.length, entries: entries.length, files: own.size };
 }

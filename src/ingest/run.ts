@@ -3,12 +3,38 @@
 import { readFile } from "node:fs/promises";
 import { join } from "node:path";
 import { closeGraph } from "../db.ts";
-import { loadAdvisories, loadMatches, loadOwners, loadRepos, readRepos } from "../graph/load.ts";
+import { loadAdvisories, loadMatches, loadOwners, loadRepos, loadScan, readRepos, type ScanStatus } from "../graph/load.ts";
 import { ensureSchema } from "../graph/schema.ts";
 import { goAdvisory, queryBatch, type GoAdvisory } from "./osv.ts";
 import type { FleetLock } from "./pin.ts";
+import { readScan, type Scan } from "./scans.ts";
 
 const ROOT = join(import.meta.dirname, "../..");
+const SCANS = join(ROOT, "data/scans");
+
+// data/scans holds one govulncheck JSON per repo plus _status.tsv from scripts/scan.sh.
+async function readScans(lock: FleetLock): Promise<Map<string, { status: ScanStatus; scan: Scan | undefined }>> {
+  const out = new Map<string, { status: ScanStatus; scan: Scan | undefined }>();
+  let tsv = "";
+  try {
+    tsv = await readFile(join(SCANS, "_status.tsv"), "utf8");
+  } catch {
+    return out;
+  }
+  for (const line of tsv.split("\n")) {
+    const [repo, sha, toolchain, exit] = line.split("\t");
+    if (!repo || !lock.repos.some((p) => p.repo === repo && p.sha === sha)) continue;
+    const code = Number(exit);
+    // govulncheck -format json exits 0 whether or not it finds anything; non-zero is a failed scan.
+    const status: ScanStatus = { repo, ok: code === 0, exit: code, toolchain: toolchain ?? "" };
+    let scan: Scan | undefined;
+    try {
+      scan = await readScan(join(SCANS, `${repo}.json`));
+    } catch {}
+    out.set(repo, { status, scan });
+  }
+  return out;
+}
 
 if (import.meta.main) {
   const lock = JSON.parse(await readFile(join(ROOT, "fleet.lock.json"), "utf8")) as FleetLock;
@@ -19,7 +45,10 @@ if (import.meta.main) {
   console.log(`owner rules with teams ${await loadOwners(repos)}`);
 
   const hits = await queryBatch(pairs);
+  const scans = await readScans(lock);
   const ids = new Set([...hits.values()].flat());
+  // govulncheck can find advisories the go.mod versions alone did not (e.g. the build list differs).
+  for (const s of scans.values()) for (const f of s.scan?.findings ?? []) ids.add(f.osv);
   const goIds = [...ids].filter((id) => id.startsWith("GO-"));
   const advisories = new Map<string, GoAdvisory>();
   for (const id of goIds) advisories.set(id, await goAdvisory(id));
@@ -29,5 +58,16 @@ if (import.meta.main) {
 
   console.log(`vulnerable functions ${await loadAdvisories([...advisories.values()])}`);
   console.log(`version matches ${await loadMatches(hits, advisories)}`);
+
+  for (const repo of repos) {
+    const s = scans.get(repo.name);
+    if (!s) {
+      console.log(`${repo.name.padEnd(28)} not scanned`);
+      continue;
+    }
+    const n = await loadScan(repo, s.status, s.scan);
+    const state = s.status.ok ? "ok" : `FAILED (exit ${s.status.exit})`;
+    console.log(`${repo.name.padEnd(28)} scan ${state}: imports ${n.imports}, call edges ${n.calls}, entries ${n.entries}, owned files ${n.files}`);
+  }
   await closeGraph();
 }
