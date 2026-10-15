@@ -139,6 +139,7 @@ export async function loadAdvisories(advisories: GoAdvisory[]) {
        MATCH (a:Advisory {id: f.id}), (pkg:Package {path: f.pkg})
        MERGE (fn:Func {key: f.key})
        ON CREATE SET fn.package = f.pkg, fn.name = f.name
+       SET fn.module = f.module
        MERGE (fn)-[:IN]->(pkg)
        MERGE (a)-[:VULNERABLE_FUNC]->(fn)`,
       { funcs: funcs.slice(i, i + 2000) },
@@ -211,9 +212,11 @@ export async function loadScan(repo: RepoData, status: ScanStatus, scan: Scan | 
     await write(
       `UNWIND $calls AS c
        MERGE (a:Func {key: c.from.key})
-       ON CREATE SET a.package = c.from.pkg, a.name = c.from.name, a.module = c.from.module
+       ON CREATE SET a.package = c.from.pkg, a.name = c.from.name
+       SET a.module = c.from.module
        MERGE (b:Func {key: c.to.key})
-       ON CREATE SET b.package = c.to.pkg, b.name = c.to.name, b.module = c.to.module
+       ON CREATE SET b.package = c.to.pkg, b.name = c.to.name
+       SET b.module = c.to.module
        MERGE (a)-[:CALLS {repo: $repo}]->(b)`,
       { repo: repo.name, calls: calls.slice(i, i + 2000) },
     );
