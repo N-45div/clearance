@@ -23,14 +23,14 @@ export type Decision = {
 };
 
 type Candidate = {
-  repo: string; sha: string; scanOk: boolean | null; scanExit: number | null; repoModule: string;
+  repo: string; sha: string; scanOk: boolean | null; scanExit: number | null; scanNote: string | null; repoModule: string;
   advisory: string; modified: string; bumps: string[];
 };
 
 // Every pair a version-only scanner would flag: the repo builds with a module version in the advisory's range.
 export const CANDIDATES = `
 MATCH (r:Repo)-[:REQUIRES|BUILT_WITH]->(v:ModuleVersion)-[m:VULNERABLE_TO]->(a:Advisory)
-RETURN r.name AS repo, r.sha AS sha, r.scanOk AS scanOk, r.scanExit AS scanExit, r.module AS repoModule,
+RETURN r.name AS repo, r.sha AS sha, r.scanOk AS scanOk, r.scanExit AS scanExit, r.scanNote AS scanNote, r.module AS repoModule,
        a.id AS advisory, a.modified AS modified,
        collect(v.path + '@' + v.version + '=>' + coalesce(m.fixed, '')) AS bumps
 ORDER BY repo, advisory`;
@@ -63,7 +63,7 @@ export async function decide(c: Candidate): Promise<Decision> {
   if (!c.scanOk) {
     return {
       ...base, status: "under_investigation",
-      reason: `${c.bumps.map((b) => b.split("=>")[0]).join(", ")} in range, but the reachability scan of this commit failed (exit ${c.scanExit ?? "none"}), so nothing is claimed`,
+      reason: `${c.bumps.map((b) => b.split("=>")[0]).join(", ")} in range, but the reachability scan of this commit failed (${c.scanNote ?? `exit ${c.scanExit ?? "none"}`}), so nothing is claimed`,
     };
   }
   const [hit] = await read<{ path: string[]; modules: string[] }>(CALL_PATH, { repo: c.repo, advisory: c.advisory });
@@ -116,12 +116,19 @@ export async function record(decisions: Decision[], now = new Date().toISOString
     )).map((x) => [x.key, x.v]),
   );
   const fresh: (Decision & { key: string })[] = [];
+  const reworded: { key: string; reason: string }[] = [];
   for (const d of decisions) {
     const key = `${d.repo}|${d.advisory}`;
     const prev = current.get(key);
     current.delete(key);
     if (!prev || !same(prev, d)) fresh.push({ ...d, key });
+    // Same decision, clearer wording: not a new verdict, so the text is updated in place.
+    else if (prev.reason !== d.reason) reworded.push({ key, reason: d.reason });
   }
+  await write(
+    `UNWIND $reworded AS x MATCH (v:Verdict {key: x.key, current: true}) SET v.reason = x.reason`,
+    { reworded },
+  );
   for (const [key, prev] of current) {
     if (prev.status === "fixed") continue;
     const [repo, advisory] = key.split("|") as [string, string];

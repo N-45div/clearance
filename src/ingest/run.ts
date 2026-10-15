@@ -21,12 +21,17 @@ async function readScans(lock: FleetLock): Promise<Map<string, { status: ScanSta
   } catch {
     return out;
   }
+  // Why a scan failed, written by hand after looking at the scan's stderr.
+  let notes: Record<string, string> = {};
+  try {
+    notes = JSON.parse(await readFile(join(SCANS, "_notes.json"), "utf8")) as Record<string, string>;
+  } catch {}
   for (const line of tsv.split("\n")) {
     const [repo, sha, toolchain, exit] = line.split("\t");
     if (!repo || !lock.repos.some((p) => p.repo === repo && p.sha === sha)) continue;
     const code = Number(exit);
     // govulncheck -format json exits 0 whether or not it finds anything; non-zero is a failed scan.
-    const status: ScanStatus = { repo, ok: code === 0, exit: code, toolchain: toolchain ?? "" };
+    const status: ScanStatus = { repo, ok: code === 0, exit: code, toolchain: toolchain ?? "", note: notes[repo] ?? null };
     let scan: Scan | undefined;
     try {
       scan = await readScan(join(SCANS, `${repo}.json`));

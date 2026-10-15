@@ -1,0 +1,4 @@
+{
+  "alloy": "govulncheck ran out of memory on ./... (killed at 31 GB, twice), and Alloy's shipped binary is built from a separate collector/ module",
+  "beyla": "the packages do not type-check without the eBPF Go code that `go generate` produces, so govulncheck could not load them"
+}

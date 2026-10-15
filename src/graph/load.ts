@@ -170,7 +170,7 @@ export async function loadMatches(hits: Map<string, string[]>, advisories: Map<s
   return edges.length;
 }
 
-export type ScanStatus = { repo: string; ok: boolean; exit: number; toolchain: string };
+export type ScanStatus = { repo: string; ok: boolean; exit: number; toolchain: string; note: string | null };
 
 // Repo-scoped facts from govulncheck: IMPORTS, ENTRY, CALLS {repo}, and for frames in the repo's own
 // code, the file and the CODEOWNERS team that owns it.
@@ -178,12 +178,12 @@ export async function loadScan(repo: RepoData, status: ScanStatus, scan: Scan | 
   await write(
     `MATCH (r:Repo {name: $repo})
      SET r.scanOk = $ok, r.scanExit = $exit, r.scanToolchain = $toolchain,
-         r.scanner = $scanner, r.scanDb = $db
+         r.scanner = $scanner, r.scanDb = $db, r.scanNote = $note
      WITH r
      OPTIONAL MATCH (r)-[e:IMPORTS|ENTRY]->()
      DELETE e`,
     {
-      repo: repo.name, ok: status.ok && !!scan?.config, exit: status.exit, toolchain: status.toolchain,
+      repo: repo.name, ok: status.ok && !!scan?.config, exit: status.exit, toolchain: status.toolchain, note: status.note,
       scanner: scan?.config?.scanner_version ?? null, db: scan?.config?.db_last_modified ?? null,
     },
   );
