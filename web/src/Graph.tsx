@@ -32,7 +32,7 @@ export function Graph({ data, onRepo }: { data: GraphData | undefined; onRepo: (
     canvas.setConfig({
       backgroundColor: css.getPropertyValue("--canvas-bg").trim(),
       foregroundColor: ink,
-      layoutOptions: { force: { linkDistance: 40, collisionPadding: 30 } },
+      layoutOptions: { force: { linkDistance: 26, collisionPadding: 34 } },
       node: {
         nodeCanvasObject: (node, ctx) => {
           const r = RADIUS[node.labels[0] ?? ""] ?? 4;
@@ -46,7 +46,7 @@ export function Graph({ data, onRepo }: { data: GraphData | undefined; onRepo: (
           ctx.strokeStyle = panel;
           ctx.stroke();
           const repo = node.labels.includes("Repo") || node.labels.includes("Advisory");
-          ctx.font = `${repo ? 600 : 400} ${repo ? 11 : 9}px Inter, sans-serif`;
+          ctx.font = `${repo ? 600 : 500} ${repo ? 13 : 10.5}px Inter, sans-serif`;
           ctx.fillStyle = repo ? ink : muted;
           ctx.textAlign = "left";
           ctx.textBaseline = "middle";
@@ -68,7 +68,7 @@ export function Graph({ data, onRepo }: { data: GraphData | undefined; onRepo: (
     });
     canvas.setData(data as unknown as Data);
     // Fit once the force layout has mostly settled.
-    const timers = [900, 2200].map((ms) => setTimeout(() => canvas.zoomToFit(0.92), ms));
+    const timers = [900, 2200].map((ms) => setTimeout(() => canvas.zoomToFit(1), ms));
     return () => timers.forEach(clearTimeout);
   }, [data, onRepo]);
 

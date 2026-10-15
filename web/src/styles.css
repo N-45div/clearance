@@ -162,7 +162,7 @@ button { font: inherit; color: inherit; cursor: pointer; }
 .verdict-line b.s { color: var(--safe); }
 .verdict-line b.u { color: var(--unknown); }
 
-.canvas-wrap { position: relative; height: 340px; border: 1px solid var(--line); border-radius: 8px; overflow: hidden; background: var(--canvas-bg); }
+.canvas-wrap { position: relative; height: 380px; border: 1px solid var(--line); border-radius: 8px; overflow: hidden; background: var(--canvas-bg); }
 .canvas-wrap falkordb-canvas { display: block; width: 100%; height: 100%; }
 .canvas-key { position: absolute; left: 10px; bottom: 8px; display: flex; gap: 10px; flex-wrap: wrap; font-size: 11.5px; color: var(--muted); background: color-mix(in srgb, var(--panel) 85%, transparent); padding: 4px 8px; border-radius: 6px; }
 .dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; margin-right: 4px; vertical-align: 0; }
