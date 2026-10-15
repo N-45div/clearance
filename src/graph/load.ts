@@ -148,8 +148,10 @@ export async function loadAdvisories(advisories: GoAdvisory[]) {
   return funcs.length;
 }
 
-export async function loadMatches(hits: Map<string, string[]>, advisories: Map<string, GoAdvisory>) {
-  await write(`MATCH ()-[e:VULNERABLE_TO]->() DELETE e`);
+// A full ingest replaces every match; the advisory feed replaces only the advisories it just loaded.
+export async function loadMatches(hits: Map<string, string[]>, advisories: Map<string, GoAdvisory>, only?: string[]) {
+  if (only) await write(`MATCH ()-[e:VULNERABLE_TO]->(a:Advisory) WHERE a.id IN $only DELETE e`, { only });
+  else await write(`MATCH ()-[e:VULNERABLE_TO]->() DELETE e`);
   const edges: { key: string; id: string; fixed: string | null }[] = [];
   for (const [k, ids] of hits) {
     const at = k.lastIndexOf("@");

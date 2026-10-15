@@ -38,7 +38,8 @@ export const scanPredates = (scanDb: string | null, published: string) =>
 
 type Candidate = {
   repo: string; sha: string; scanOk: boolean | null; scanExit: number | null; scanNote: string | null; repoModule: string;
-  scanDb: string | null; advisory: string; published: string; modified: string; bumps: string[];
+  scanDb: string | null; advisory: string; published: string; modified: string; addedAfterScan: boolean | null;
+  bumps: string[];
 };
 
 // Every pair a version-only scanner would flag: the repo builds with a module version in the advisory's range.
@@ -46,6 +47,7 @@ export const CANDIDATES = `
 MATCH (r:Repo)-[:REQUIRES|BUILT_WITH]->(v:ModuleVersion)-[m:VULNERABLE_TO]->(a:Advisory)
 RETURN r.name AS repo, r.sha AS sha, r.scanOk AS scanOk, r.scanExit AS scanExit, r.scanNote AS scanNote, r.module AS repoModule,
        r.scanDb AS scanDb, a.id AS advisory, a.published AS published, a.modified AS modified,
+       a.addedAfterScan AS addedAfterScan,
        collect(v.path + '@' + v.version + '=>' + coalesce(m.fixed, '')) AS bumps
 ORDER BY repo, advisory`;
 
@@ -83,7 +85,7 @@ export async function decide(c: Candidate): Promise<Decision> {
   }
   // The scan only knew the advisories in its vulndb snapshot. A newer one has no call paths or imports
   // in the graph yet, so "no path" would prove nothing.
-  if (scanPredates(c.scanDb, c.published)) {
+  if (scanPredates(c.scanDb, c.published) || c.addedAfterScan) {
     return {
       ...base, status: "under_investigation",
       reason: `${c.bumps.map((b) => b.split("=>")[0]).join(", ")} in range; the advisory was published after this commit was scanned (vulndb ${c.scanDb?.slice(0, 10)}), so it needs a rescan`,

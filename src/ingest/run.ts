@@ -2,7 +2,7 @@
 // advisories OSV matches against those versions, the vulnerable functions, and CODEOWNERS teams.
 import { readFile } from "node:fs/promises";
 import { join } from "node:path";
-import { closeGraph } from "../db.ts";
+import { closeGraph, write } from "../db.ts";
 import { loadAdvisories, loadMatches, loadOwners, loadRepos, loadScan, readRepos, type ScanStatus } from "../graph/load.ts";
 import { ensureSchema } from "../graph/schema.ts";
 import { goAdvisory, queryBatch, type GoAdvisory } from "./osv.ts";
@@ -62,6 +62,11 @@ if (import.meta.main) {
   console.log(`advisories ${goIds.length} (Go vulndb), ${unreviewed.length} other ids with no Go vulndb record`);
 
   console.log(`vulnerable functions ${await loadAdvisories([...advisories.values()])}`);
+  // Advisories the feed added are judged on the scans once those scans are newer than the advisory.
+  await write(
+    `MATCH (r:Repo) WHERE r.scanDb IS NOT NULL WITH min(r.scanDb) AS db
+     MATCH (a:Advisory) WHERE a.addedAfterScan AND a.modified <= db REMOVE a.addedAfterScan`,
+  );
   console.log(`version matches ${await loadMatches(hits, advisories)}`);
 
   for (const repo of repos) {
