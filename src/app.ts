@@ -1,9 +1,8 @@
-import { serve } from "@hono/node-server";
-import { serveStatic } from "@hono/node-server/serve-static";
 import { Hono } from "hono";
 import { ask, type Turn } from "./agent.ts";
 import { read } from "./db.ts";
 import * as fleet from "./graph/fleet.ts";
+import { allowAsk, clientIp } from "./limits.ts";
 import { issueDraft, vexDocument, type Frame, type VerdictRow } from "./report.ts";
 
 const app = new Hono();
@@ -108,8 +107,18 @@ api.post("/ask", async (c) => {
   const question = body.question?.trim();
   if (!question) return c.json({ error: "question is required" }, 400);
   if (question.length > 2000) return c.json({ error: "question is too long" }, 400);
+  const limit = await allowAsk(clientIp(c.req.raw.headers));
+  if (!limit.ok) {
+    c.header("Retry-After", String(limit.retryAfter));
+    return c.json({ error: `Limit reached: ${limit.reason}. Everything else in the app still works.` }, 429);
+  }
+  // Only well-formed, short turns go back to the model.
+  const history = (Array.isArray(body.history) ? body.history : [])
+    .filter((t) => (t?.role === "user" || t?.role === "assistant") && typeof t.content === "string")
+    .slice(-6)
+    .map((t) => ({ role: t.role, content: t.content.slice(0, 4000) }));
   try {
-    return c.json(await ask(question, body.history ?? []));
+    return c.json(await ask(question, history));
   } catch (e) {
     return c.json({ error: (e as Error).message }, 502);
   }
@@ -117,8 +126,6 @@ api.post("/ask", async (c) => {
 
 app.route("/api", api);
 app.onError((err, c) => c.json({ error: err.message }, 500));
-app.use("/*", serveStatic({ root: "./web/dist" }));
-app.get("/*", serveStatic({ path: "./web/dist/index.html" }));
 
-const port = Number(process.env.PORT ?? 8080);
-serve({ fetch: app.fetch, port }, () => console.log(`Clearance on http://localhost:${port}`));
+// Vercel runs this default export as a function; src/main.ts runs it locally.
+export default app;

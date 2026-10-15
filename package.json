@@ -8,7 +8,7 @@
     "node": ">=24"
   },
   "scripts": {
-    "start": "node --no-warnings src/server.ts",
+    "start": "node --no-warnings src/main.ts",
     "build": "vite build web",
     "dev:web": "vite web",
     "pin": "node --no-warnings src/ingest/pin.ts",
