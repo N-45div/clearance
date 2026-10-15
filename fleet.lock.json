@@ -1,0 +1,146 @@
+{
+  "org": "grafana",
+  "pinnedAt": "2026-10-15T13:01:42.198Z",
+  "repos": [
+    {
+      "repo": "k6",
+      "branch": "master",
+      "sha": "3afb7be136269c18cface16e2751b9fddd42b90a",
+      "committedAt": "2026-10-15T12:21:40Z",
+      "owners": "CODEOWNERS"
+    },
+    {
+      "repo": "loki",
+      "branch": "main",
+      "sha": "932dea5dc3b59bb2f3ef7ce38ddf87821ca4ebbe",
+      "committedAt": "2026-10-15T12:47:17Z",
+      "owners": "CODEOWNERS"
+    },
+    {
+      "repo": "pyroscope",
+      "branch": "main",
+      "sha": "6ec11a590912a4ff03b7e243bb4bd939387027ab",
+      "committedAt": "2026-10-15T12:24:58Z",
+      "owners": "CODEOWNERS"
+    },
+    {
+      "repo": "tempo",
+      "branch": "main",
+      "sha": "c478488929811c041227991f1b0601864dab7c8c",
+      "committedAt": "2026-10-14T22:18:22Z",
+      "owners": "CODEOWNERS"
+    },
+    {
+      "repo": "mimir",
+      "branch": "main",
+      "sha": "b082ea4fe5eee26505481cedc9a3a634eb134dad",
+      "committedAt": "2026-10-15T11:20:12Z",
+      "owners": "CODEOWNERS"
+    },
+    {
+      "repo": "alloy",
+      "branch": "main",
+      "sha": "5dba56afa5e0def9745c042de0b996274a430d0c",
+      "committedAt": "2026-10-14T18:44:09Z",
+      "owners": "CODEOWNERS"
+    },
+    {
+      "repo": "mcp-grafana",
+      "branch": "main",
+      "sha": "5ea0cc34678cdd6fcd2f5c731b6619a8433bcb20",
+      "committedAt": "2026-10-14T13:20:05Z",
+      "owners": "CODEOWNERS"
+    },
+    {
+      "repo": "tanka",
+      "branch": "main",
+      "sha": "13f3986c242672494fa23a55b80283c086b736bb",
+      "committedAt": "2026-10-14T06:10:45Z",
+      "owners": "CODEOWNERS"
+    },
+    {
+      "repo": "beyla",
+      "branch": "main",
+      "sha": "c02d16f9fc4384c858c0879b185ba4912a7e17c1",
+      "committedAt": "2026-10-15T12:50:10Z",
+      "owners": "CODEOWNERS"
+    },
+    {
+      "repo": "grafana-operator",
+      "branch": "master",
+      "sha": "d30a7a9a5757e0bd101ddfed08cc3bbd42584238",
+      "committedAt": "2026-10-15T12:54:56Z",
+      "owners": "CODEOWNERS"
+    },
+    {
+      "repo": "k6-operator",
+      "branch": "main",
+      "sha": "1eaf25e1db858153548054ac97bfaad17ae29610",
+      "committedAt": "2026-10-13T12:56:23Z",
+      "owners": "CODEOWNERS"
+    },
+    {
+      "repo": "terraform-provider-grafana",
+      "branch": "main",
+      "sha": "9168ab5d4b125455d670524ed12cb89faa99eadf",
+      "committedAt": "2026-10-14T11:35:45Z",
+      "owners": ".github/CODEOWNERS"
+    },
+    {
+      "repo": "carbon-relay-ng",
+      "branch": "main",
+      "sha": "f40c3a67bf51361ae4bb374a9a95d7a65712b0a1",
+      "committedAt": "2026-10-13T11:46:01Z",
+      "owners": "CODEOWNERS"
+    },
+    {
+      "repo": "synthetic-monitoring-agent",
+      "branch": "main",
+      "sha": "ab5ebdd3152c8f93c5062bf94bfb0172101768d5",
+      "committedAt": "2026-10-09T12:44:22Z",
+      "owners": "CODEOWNERS"
+    },
+    {
+      "repo": "rollout-operator",
+      "branch": "main",
+      "sha": "0bd39d3cfd028eec2202f0eabcfaf918ea4fd1d7",
+      "committedAt": "2026-10-12T17:11:58Z",
+      "owners": ".github/CODEOWNERS"
+    },
+    {
+      "repo": "smtprelay",
+      "branch": "main",
+      "sha": "4821afa7c7791089ec6aa777c99007664e281175",
+      "committedAt": "2026-10-09T20:09:17Z",
+      "owners": null
+    },
+    {
+      "repo": "cloudcost-exporter",
+      "branch": "main",
+      "sha": "cf188ae13581e853661fb9277da18319b7b993e7",
+      "committedAt": "2026-10-14T19:35:02Z",
+      "owners": "CODEOWNERS"
+    },
+    {
+      "repo": "pdc-agent",
+      "branch": "main",
+      "sha": "b47a1806ae8b415b562ed2f86c59374da3924944",
+      "committedAt": "2026-10-01T16:23:25Z",
+      "owners": null
+    },
+    {
+      "repo": "tempo-operator",
+      "branch": "main",
+      "sha": "e9b1e738e76e70babce3a51ba3ac0065c66301e3",
+      "committedAt": "2026-10-14T16:46:11Z",
+      "owners": "CODEOWNERS"
+    },
+    {
+      "repo": "xk6",
+      "branch": "master",
+      "sha": "f5bf177c1181d7a64a0dc7b8d2b9492bd82ead39",
+      "committedAt": "2026-10-01T12:54:32Z",
+      "owners": "CODEOWNERS"
+    }
+  ]
+}

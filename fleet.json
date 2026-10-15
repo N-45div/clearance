@@ -1,0 +1,25 @@
+{
+  "org": "grafana",
+  "repos": [
+    "k6",
+    "loki",
+    "pyroscope",
+    "tempo",
+    "mimir",
+    "alloy",
+    "mcp-grafana",
+    "tanka",
+    "beyla",
+    "grafana-operator",
+    "k6-operator",
+    "terraform-provider-grafana",
+    "carbon-relay-ng",
+    "synthetic-monitoring-agent",
+    "rollout-operator",
+    "smtprelay",
+    "cloudcost-exporter",
+    "pdc-agent",
+    "tempo-operator",
+    "xk6"
+  ]
+}
