@@ -29,7 +29,7 @@ export async function allowAsk(ip: string, now = new Date()): Promise<Verdict> {
   if (perIp === 1) await r.expire(ipKey, w.nextHour + 60);
   if (perDay === 1) await r.expire(dayKey, w.nextDay + 60);
   if (perDay > PER_DAY) return { ok: false, reason: `the demo's daily limit of ${PER_DAY} questions is used up`, retryAfter: w.nextDay };
-  if (perIp > PER_IP_PER_HOUR) return { ok: false, reason: `you have asked ${PER_IP_PER_HOUR} questions this hour`, retryAfter: w.nextHour };
+  if (perIp > PER_IP_PER_HOUR) return { ok: false, reason: `the limit of ${PER_IP_PER_HOUR} questions per visitor per hour is reached`, retryAfter: w.nextHour };
   return { ok: true };
 }
 
