@@ -16,7 +16,9 @@
     "typecheck": "tsc -p tsconfig.json"
   },
   "dependencies": {
-    "falkordb": "^6.8.0"
+    "@hono/node-server": "^2.1.5",
+    "falkordb": "^6.8.0",
+    "hono": "^4.13.13"
   },
   "devDependencies": {
     "@types/node": "^24.0.0",
