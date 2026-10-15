@@ -17,10 +17,20 @@ export type Decision = {
   callSite: string | null; // the repo's own function closest to the vulnerable code
   file: string | null;
   owners: string[];
+  // For affected verdicts: is any path from code that ships, or only from examples, tests and tooling?
+  reach: "shipped" | "examples_tests_only" | null;
+  entryFile: string | null;
   repoSha: string;
   advisoryModified: string;
   reason: string;
 };
+
+// Entry points under these directories are not part of what a repo ships.
+export const NON_SHIPPING =
+  /(^|\/)(examples?|integration|e2e|tests?|testdata|testing|testutil|hack|tools|scripts|mocks?|benchmarks?|docs?)\//i;
+
+// No file (an entry in a dependency, or unknown) counts as shipped, so a verdict is never downgraded on a guess.
+export const isShipping = (file: string | null | undefined) => !file || !NON_SHIPPING.test(file);
 
 type Candidate = {
   repo: string; sha: string; scanOk: boolean | null; scanExit: number | null; scanNote: string | null; repoModule: string;
@@ -36,13 +46,14 @@ RETURN r.name AS repo, r.sha AS sha, r.scanOk AS scanOk, r.scanExit AS scanExit,
 ORDER BY repo, advisory`;
 
 // Affected = a call path, inside this repo's call edges, from one of its entry points to a function
-// the advisory names. The shortest one is the evidence.
+// the advisory names. The shortest path from shipped code is the evidence; failing that, the shortest one.
 export const CALL_PATH = `
 MATCH (r:Repo {name: $repo})-[:ENTRY]->(e:Func)
 MATCH p = (e)-[:CALLS*0..30 {repo: $repo}]->(f:Func), (:Advisory {id: $advisory})-[:VULNERABLE_FUNC]->(f)
-WITH p, reduce(s = '', n IN nodes(p) | s + n.key + ' ') AS sig
-RETURN [n IN nodes(p) | n.key] AS path, [n IN nodes(p) | n.module] AS modules
-ORDER BY length(p), sig LIMIT 1`;
+OPTIONAL MATCH (e)-[:DEFINED_IN]->(file:File {repo: $repo})
+WITH p, file.path AS entryFile, reduce(s = '', n IN nodes(p) | s + n.key + ' ') AS sig
+RETURN [n IN nodes(p) | n.key] AS path, [n IN nodes(p) | n.module] AS modules, entryFile
+ORDER BY length(p), sig LIMIT 200`;
 
 // Not affected, but imported: the vulnerable package is in the build and nothing reaches the bad code.
 export const IMPORTED = `
@@ -57,7 +68,7 @@ RETURN file.path AS file, collect(t.handle) AS owners LIMIT 1`;
 export async function decide(c: Candidate): Promise<Decision> {
   const base = {
     repo: c.repo, advisory: c.advisory, bumps: [...c.bumps].sort(),
-    path: [] as string[], callSite: null, file: null, owners: [] as string[], repoSha: c.sha,
+    path: [] as string[], callSite: null, file: null, owners: [] as string[], reach: null, entryFile: null, repoSha: c.sha,
     advisoryModified: c.modified, justification: null,
   };
   if (!c.scanOk) {
@@ -66,8 +77,12 @@ export async function decide(c: Candidate): Promise<Decision> {
       reason: `${c.bumps.map((b) => b.split("=>")[0]).join(", ")} in range, but the reachability scan of this commit failed (${c.scanNote ?? `exit ${c.scanExit ?? "none"}`}), so nothing is claimed`,
     };
   }
-  const [hit] = await read<{ path: string[]; modules: string[] }>(CALL_PATH, { repo: c.repo, advisory: c.advisory });
+  const paths = await read<{ path: string[]; modules: string[]; entryFile: string | null }>(CALL_PATH, {
+    repo: c.repo, advisory: c.advisory,
+  });
+  const hit = paths.find((p) => isShipping(p.entryFile)) ?? paths[0];
   if (hit) {
+    const shipped = isShipping(hit.entryFile);
     // Walk back from the vulnerable function to the first frame in the repo's own code: that is the
     // line that touches the dependency, and its CODEOWNERS team gets the work.
     let callSite: string | null = null;
@@ -80,7 +95,10 @@ export async function decide(c: Candidate): Promise<Decision> {
     const [own] = callSite ? await read<{ file: string; owners: string[] }>(OWNER, { key: callSite, repo: c.repo }) : [];
     return {
       ...base, status: "affected", path: hit.path, callSite, file: own?.file ?? null, owners: own?.owners ?? [],
-      reason: `${hit.path.length - 1} call(s) from ${hit.path[0]} reach ${hit.path.at(-1)}`,
+      reach: shipped ? "shipped" : "examples_tests_only", entryFile: hit.entryFile,
+      reason: shipped
+        ? `${hit.path.length - 1} call(s) from ${hit.path[0]} reach ${hit.path.at(-1)}`
+        : `only reachable from ${hit.entryFile} (examples, tests or tooling), not from shipped code: ${hit.path.length - 1} call(s) reach ${hit.path.at(-1)}`,
     };
   }
   const [imp] = await read<{ pkg: string }>(IMPORTED, { repo: c.repo, advisory: c.advisory });
@@ -105,7 +123,8 @@ export async function decideAll(): Promise<Decision[]> {
 const same = (a: Record<string, unknown>, d: Decision) =>
   // A null property is not stored, so it reads back as undefined.
   a.status === d.status && (a.justification ?? null) === d.justification && a.repoSha === d.repoSha &&
-  a.advisoryModified === d.advisoryModified && JSON.stringify(a.path) === JSON.stringify(d.path);
+  a.advisoryModified === d.advisoryModified && JSON.stringify(a.path) === JSON.stringify(d.path) &&
+  (a.reach ?? null) === d.reach;
 
 // Stores decisions. Unchanged verdicts are kept; changed ones are superseded; verdicts whose pair is no
 // longer flagged (the repo moved off the vulnerable version) are closed as "fixed".
@@ -133,7 +152,8 @@ export async function record(decisions: Decision[], now = new Date().toISOString
     if (prev.status === "fixed") continue;
     const [repo, advisory] = key.split("|") as [string, string];
     fresh.push({
-      key, repo, advisory, status: "fixed", justification: null, bumps: (prev.bumps as string[]) ?? [], path: [], callSite: null, file: null, owners: [], repoSha: String(prev.repoSha),
+      key, repo, advisory, status: "fixed", justification: null, bumps: (prev.bumps as string[]) ?? [], path: [],
+      callSite: null, file: null, owners: [], reach: null, entryFile: null, repoSha: String(prev.repoSha),
       advisoryModified: String(prev.advisoryModified), reason: `no module version in the advisory's range is required any more`,
     });
   }
@@ -144,7 +164,7 @@ export async function record(decisions: Decision[], now = new Date().toISOString
      SET old.current = false, old.supersededAt = $now
      CREATE (v:Verdict {key: d.key, current: true, decidedAt: $now, by: 'graph', status: d.status,
        justification: d.justification, bumps: d.bumps, path: d.path,
-       callSite: d.callSite, file: d.file, owners: d.owners, repoSha: d.repoSha,
+       callSite: d.callSite, file: d.file, owners: d.owners, reach: d.reach, entryFile: d.entryFile, repoSha: d.repoSha,
        advisoryModified: d.advisoryModified, reason: d.reason})
      CREATE (v)-[:FOR]->(r), (v)-[:ABOUT]->(a)
      FOREACH (_ IN CASE WHEN old IS NULL THEN [] ELSE [1] END | CREATE (v)-[:SUPERSEDES]->(old))
