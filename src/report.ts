@@ -10,6 +10,7 @@ export type VerdictRow = {
   justification: string | null;
   reason: string;
   bumps: string[];
+  reach?: string | null;
 };
 
 export type RepoRef = { org: string; repo: string; sha: string };
@@ -33,7 +34,10 @@ export function vexDocument(ref: RepoRef, verdicts: VerdictRow[], timestamp: str
       s.justification = v.justification;
       s.impact_statement = v.reason;
     }
-    if (v.status === "affected") s.action_statement = `${bumpText(v.bumps)}. ${v.reason}.`;
+    if (v.status === "affected") {
+      const scope = v.reach === "examples_tests_only" ? "Lower priority: " : "";
+      s.action_statement = `${scope}${bumpText(v.bumps)}. ${v.reason}.`;
+    }
     if (v.status === "under_investigation") s.status_notes = v.reason;
     return s;
   });

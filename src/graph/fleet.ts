@@ -65,7 +65,7 @@ export async function blastRadius(id: string) {
      WHERE v.status <> 'fixed'
      RETURN r.name AS repo, r.sha AS sha, v.status AS status, v.justification AS justification,
             v.reason AS reason, v.path AS path, v.callSite AS callSite, v.file AS file,
-            v.owners AS owners, v.bumps AS bumps, v.decidedAt AS decidedAt
+            v.owners AS owners, v.bumps AS bumps, v.reach AS reach, v.entryFile AS entryFile, v.decidedAt AS decidedAt
      ORDER BY CASE v.status WHEN 'affected' THEN 0 WHEN 'under_investigation' THEN 1 ELSE 2 END, repo`,
     { id },
   );
@@ -161,7 +161,8 @@ export async function repoVerdicts(repo: string) {
     `MATCH (v:Verdict {current: true})-[:FOR]->(:Repo {name: $repo}), (v)-[:ABOUT]->(a:Advisory)
      WHERE v.status <> 'fixed'
      RETURN a.id AS advisory, a.summary AS summary, v.status AS status, v.justification AS justification,
-            v.reason AS reason, v.callSite AS callSite, v.file AS file, v.owners AS owners, v.bumps AS bumps
+            v.reason AS reason, v.callSite AS callSite, v.file AS file, v.owners AS owners, v.bumps AS bumps,
+            v.reach AS reach
      ORDER BY CASE v.status WHEN 'affected' THEN 0 WHEN 'under_investigation' THEN 1 ELSE 2 END, a.id`,
     { repo },
   );
