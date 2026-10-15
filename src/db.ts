@@ -12,6 +12,12 @@ export async function openGraph(): Promise<Graph> {
   return graph;
 }
 
+// The same FalkorDB server speaks plain Redis, which holds the Ask rate-limit counters.
+export async function redis() {
+  await openGraph();
+  return client!.connection;
+}
+
 export async function closeGraph(): Promise<void> {
   await client?.close();
   client = undefined;
