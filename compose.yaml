@@ -1,0 +1,12 @@
+services:
+  falkordb:
+    image: falkordb/falkordb:6.0.2
+    ports:
+      - "6379:6379"
+      - "3000:3000"
+    volumes:
+      - falkordb-data:/var/lib/falkordb/data
+    restart: unless-stopped
+
+volumes:
+  falkordb-data:

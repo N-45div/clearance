@@ -1,0 +1,22 @@
+{
+  "name": "clearance",
+  "private": true,
+  "type": "module",
+  "description": "Clear your Go fleet for a new CVE: every service gets \"affected\" with the call path, or \"not affected\" with the proof, from a FalkorDB graph.",
+  "license": "MIT",
+  "engines": { "node": ">=24" },
+  "scripts": {
+    "start": "node --no-warnings src/server.ts",
+    "pin": "node --no-warnings src/ingest/pin.ts",
+    "ingest": "node --no-warnings src/ingest/run.ts",
+    "test": "node --no-warnings --test \"test/*.test.ts\"",
+    "typecheck": "tsc -p tsconfig.json"
+  },
+  "dependencies": {
+    "falkordb": "^6.8.0"
+  },
+  "devDependencies": {
+    "@types/node": "^24.0.0",
+    "typescript": "^5.9.0"
+  }
+}
