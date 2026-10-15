@@ -124,6 +124,14 @@ api.post("/ask", async (c) => {
   }
 });
 
+// FalkorDB Cloud's free tier stops an instance after a day without use; Vercel calls this daily.
+api.get("/cron/keepwarm", async (c) => {
+  const secret = process.env.CRON_SECRET;
+  if (secret && c.req.header("authorization") !== `Bearer ${secret}`) return c.json({ error: "unauthorized" }, 401);
+  const [r] = await read<{ repos: number }>(`MATCH (r:Repo) RETURN count(r) AS repos`);
+  return c.json({ ok: true, repos: r?.repos ?? 0, at: new Date().toISOString() });
+});
+
 app.route("/api", api);
 app.onError((err, c) => c.json({ error: err.message }, 500));
 
