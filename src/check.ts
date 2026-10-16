@@ -206,6 +206,7 @@ if (import.meta.main) {
   } catch (e) {
     // An error is never a pass, and never reads as "affected" (1) either.
     console.error(`clearance check: ${(e as Error).message}`);
+    if (process.env.GITHUB_ACTIONS) console.log(`::error title=clearance check::${(e as Error).message}`);
     process.exit(2);
   }
   console.log(report(r));
@@ -217,4 +218,10 @@ if (import.meta.main) {
     console.log(`\nOpenVEX: ${values.vex} (${doc.statements.length} statements)`);
   }
   process.exitCode = exitCode(r, failOn as "shipped" | "any" | "never");
+  // In GitHub Actions, the outcome also shows as an annotation on the run.
+  if (process.env.GITHUB_ACTIONS) {
+    const n = (s: string, reach?: string) => r.decisions.filter((d) => d.status === s && (!reach || d.reach === reach)).length;
+    const line = `${r.repo}: ${n("affected", "shipped")} reachable from shipped code, ${n("affected", "examples_tests_only")} only from examples or tests, ${n("not_affected")} not affected, ${n("under_investigation")} under investigation`;
+    console.log(`::${process.exitCode ? "error" : "notice"} title=clearance check (exit ${process.exitCode})::${line}`);
+  }
 }
