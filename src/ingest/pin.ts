@@ -26,12 +26,24 @@ async function pin(org: string, repo: string): Promise<Pin> {
   return { repo, branch: meta.default_branch, sha: head.sha, committedAt: head.commit.committer.date, owners };
 }
 
+// `npm run pin` pins the whole fleet; `npm run pin -- mimir k6` moves only those repos to their current
+// head and keeps every other pin, so only their verdicts are re-decided.
 if (import.meta.main) {
   const fleet = JSON.parse(await readFile(join(ROOT, "fleet.json"), "utf8")) as Fleet;
+  const only = process.argv.slice(2);
+  const previous = only.length
+    ? (JSON.parse(await readFile(join(ROOT, "fleet.lock.json"), "utf8")) as FleetLock).repos
+    : [];
   const repos: Pin[] = [];
   for (const repo of fleet.repos) {
+    const kept = previous.find((p) => p.repo === repo);
+    if (only.length && !only.includes(repo) && kept) {
+      repos.push(kept);
+      continue;
+    }
     const p = await pin(fleet.org, repo);
-    console.log(`${repo.padEnd(30)} ${p.branch.padEnd(7)} ${p.sha.slice(0, 12)} owners=${p.owners ?? "-"}`);
+    const moved = kept && kept.sha !== p.sha ? ` (was ${kept.sha.slice(0, 12)})` : "";
+    console.log(`${repo.padEnd(30)} ${p.branch.padEnd(7)} ${p.sha.slice(0, 12)}${moved} owners=${p.owners ?? "-"}`);
     repos.push(p);
   }
   const lock: FleetLock = { org: fleet.org, pinnedAt: new Date().toISOString(), repos };
