@@ -54,13 +54,15 @@ export type CallFacts = {
   // caller -> callee, both func keys, one entry per distinct pair
   calls: Map<string, { from: Frame; to: Frame }>;
   entries: Map<string, Frame>;
+  // func keys govulncheck reported as the vulnerable call (trace[0] of a symbol finding)
+  vulnerable: Set<string>;
   levels: Map<string, Level>;
 };
 
 // govulncheck reports a finding at every level it reaches, so the strongest level wins per advisory.
 export function callFacts(scan: Scan): CallFacts {
   const rank: Record<Level, number> = { module: 0, package: 1, symbol: 2 };
-  const facts: CallFacts = { imports: new Set(), calls: new Map(), entries: new Map(), levels: new Map() };
+  const facts: CallFacts = { imports: new Set(), calls: new Map(), entries: new Map(), vulnerable: new Set(), levels: new Map() };
   for (const f of scan.findings) {
     const level = levelOf(f);
     const prev = facts.levels.get(f.osv);
@@ -68,6 +70,7 @@ export function callFacts(scan: Scan): CallFacts {
     const top = f.trace[0];
     if (top?.package) facts.imports.add(top.package);
     if (level !== "symbol") continue;
+    facts.vulnerable.add(funcKey(top!));
     // trace[0] is the vulnerable function; each next frame calls the one before; the last frame is
     // the entry point in the repo's own code.
     for (let i = 0; i + 1 < f.trace.length; i++) {

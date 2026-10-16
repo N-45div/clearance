@@ -44,6 +44,8 @@ test("callFacts keeps the strongest level and the call chain toward the vulnerab
     `${MOD}/cmd.main>${MOD}/internal/browser/common.NewConnection`,
   ]);
   assert.deepEqual([...facts.entries.keys()], [`${MOD}/cmd.main`]);
+  // Only the reported vulnerable call is a target; frames in between are just hops.
+  assert.deepEqual([...facts.vulnerable], ["github.com/gorilla/websocket.Dialer.DialContext"]);
 });
 
 test("repoPath only maps frames in the repo's own module", () => {

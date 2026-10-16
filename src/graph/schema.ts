@@ -7,6 +7,8 @@ const INDEXES: [label: string, prop: string][] = [
   ["Advisory", "id"],
   ["Package", "path"],
   ["Func", "key"],
+  ["Frame", "key"],
+  ["Frame", "repo"],
   ["Team", "handle"],
   ["Verdict", "key"],
 ];

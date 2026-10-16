@@ -175,33 +175,41 @@ export async function loadMatches(hits: Map<string, string[]>, advisories: Map<s
 
 export type ScanStatus = { repo: string; ok: boolean; exit: number; toolchain: string; note: string | null };
 
-// Repo-scoped facts from govulncheck: IMPORTS, ENTRY, CALLS {repo}, and for frames in the repo's own
-// code, the file and the CODEOWNERS team that owns it.
+// Repo-scoped facts from govulncheck. Each function on a repo's call chains gets its own Frame node
+// for that repo (key "repo|func"), linked to the shared Func by IS. Frames of different repos never
+// connect, so a path query inside one repo cannot wander into another repo's chains, on any engine.
 export async function loadScan(repo: RepoData, status: ScanStatus, scan: Scan | undefined) {
   await write(
     `MATCH (r:Repo {name: $repo})
      SET r.scanOk = $ok, r.scanExit = $exit, r.scanToolchain = $toolchain,
          r.scanner = $scanner, r.scanDb = $db, r.scanNote = $note
      WITH r
-     OPTIONAL MATCH (r)-[e:IMPORTS|ENTRY]->()
+     OPTIONAL MATCH (r)-[e:IMPORTS]->()
      DELETE e`,
     {
       repo: repo.name, ok: status.ok && !!scan?.config, exit: status.exit, toolchain: status.toolchain, note: status.note,
       scanner: scan?.config?.scanner_version ?? null, db: scan?.config?.db_last_modified ?? null,
     },
   );
-  await write(`MATCH ()-[c:CALLS {repo: $repo}]->() DELETE c`, { repo: repo.name });
+  await write(`MATCH (f:Frame {repo: $repo}) DETACH DELETE f`, { repo: repo.name });
   await write(`MATCH (f:File {repo: $repo}) DETACH DELETE f`, { repo: repo.name });
   if (!scan || !status.ok) return { imports: 0, calls: 0, entries: 0, files: 0 };
 
   const facts = callFacts(scan);
-  const node = (fr: Frame) => ({
-    key: funcKey(fr), pkg: fr.package ?? "", name: funcKey(fr).slice((fr.package ?? "").length + 1),
-    module: fr.module, path: repoPath(fr, repo.mod.module) ?? null,
-    line: fr.position?.line ?? null,
-  });
-  const calls = [...facts.calls.values()].map((c) => ({ from: node(c.from), to: node(c.to) }));
-  const entries = [...facts.entries.values()].map(node);
+  const frames = new Map<string, { key: string; func: string; pkg: string; name: string; module: string; path: string | null; line: number | null; vulnerable: boolean }>();
+  const frame = (fr: Frame) => {
+    const func = funcKey(fr);
+    const key = `${repo.name}|${func}`;
+    if (!frames.has(key)) {
+      frames.set(key, {
+        key, func, pkg: fr.package ?? "", name: func.slice((fr.package ?? "").length + 1), module: fr.module,
+        path: repoPath(fr, repo.mod.module) ?? null, line: fr.position?.line ?? null, vulnerable: facts.vulnerable.has(func),
+      });
+    }
+    return key;
+  };
+  const calls = [...facts.calls.values()].map((c) => ({ from: frame(c.from), to: frame(c.to) }));
+  const entries = [...facts.entries.values()].map(frame);
 
   await write(
     `UNWIND $pkgs AS p
@@ -210,44 +218,48 @@ export async function loadScan(repo: RepoData, status: ScanStatus, scan: Scan | 
      MERGE (r)-[:IMPORTS]->(pkg)`,
     { repo: repo.name, pkgs: [...facts.imports] },
   );
+  const all = [...frames.values()];
+  for (let i = 0; i < all.length; i += 2000) {
+    await write(
+      `UNWIND $frames AS x
+       MERGE (fn:Func {key: x.func})
+       ON CREATE SET fn.package = x.pkg, fn.name = x.name
+       SET fn.module = x.module
+       CREATE (f:Frame {key: x.key, repo: $repo, func: x.func, package: x.pkg, name: x.name, module: x.module, vulnerable: x.vulnerable})
+       CREATE (f)-[:IS]->(fn)`,
+      { repo: repo.name, frames: all.slice(i, i + 2000) },
+    );
+  }
   for (let i = 0; i < calls.length; i += 2000) {
     await write(
       `UNWIND $calls AS c
-       MERGE (a:Func {key: c.from.key})
-       ON CREATE SET a.package = c.from.pkg, a.name = c.from.name
-       SET a.module = c.from.module
-       MERGE (b:Func {key: c.to.key})
-       ON CREATE SET b.package = c.to.pkg, b.name = c.to.name
-       SET b.module = c.to.module
-       MERGE (a)-[:CALLS {repo: $repo}]->(b)`,
-      { repo: repo.name, calls: calls.slice(i, i + 2000) },
+       MATCH (a:Frame {key: c.from}), (b:Frame {key: c.to})
+       CREATE (a)-[:CALLS]->(b)`,
+      { calls: calls.slice(i, i + 2000) },
     );
   }
   await write(
-    `UNWIND $entries AS e
-     MATCH (r:Repo {name: $repo}), (f:Func {key: e.key})
-     MERGE (r)-[:ENTRY]->(f)`,
+    `UNWIND $entries AS k
+     MATCH (r:Repo {name: $repo}), (f:Frame {key: k})
+     CREATE (r)-[:ENTRY]->(f)`,
     { repo: repo.name, entries },
   );
 
   // Frames in the repo's own code carry a file and line; CODEOWNERS turns the file into a team.
-  const own = new Map<string, { key: string; path: string; line: number; teams: string[] }>();
-  for (const fr of [...calls.flatMap((c) => [c.from, c.to]), ...entries]) {
-    if (!fr.path || own.has(fr.key)) continue;
-    own.set(fr.key, { key: fr.key, path: fr.path, line: fr.line ?? 0, teams: ownersFor(repo.rules, fr.path)?.teams ?? [] });
-  }
+  const own = all
+    .filter((x) => x.path)
+    .map((x) => ({ key: x.key, path: x.path!, line: x.line ?? 0, teams: ownersFor(repo.rules, x.path!)?.teams ?? [] }));
   await write(
     `UNWIND $own AS o
-     MATCH (fn:Func {key: o.key})
+     MATCH (f:Frame {key: o.key})
      MERGE (file:File {key: $repo + ':' + o.path})
      ON CREATE SET file.repo = $repo, file.path = o.path
-     MERGE (fn)-[d:DEFINED_IN]->(file)
-     SET d.line = o.line
+     CREATE (f)-[:DEFINED_IN {line: o.line}]->(file)
      WITH file, o
      UNWIND o.teams AS handle
      MERGE (t:Team {handle: handle})
      MERGE (file)-[:OWNED_BY]->(t)`,
-    { repo: repo.name, own: [...own.values()] },
+    { repo: repo.name, own },
   );
-  return { imports: facts.imports.size, calls: calls.length, entries: entries.length, files: own.size };
+  return { imports: facts.imports.size, calls: calls.length, entries: entries.length, files: own.length };
 }
