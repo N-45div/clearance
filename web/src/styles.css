@@ -1,27 +1,29 @@
 :root {
-  --bg: #f7f7f5;
+  /* One palette for the landing page and the console, from the style audit (Mercury-like). */
+  --bg: #f3f3f3;
   --panel: #ffffff;
-  --ink: #17171a;
-  --muted: #66666f;
-  --faint: #9a9aa3;
-  --line: #e6e6e9;
-  --line-strong: #d4d4d9;
-  --hover: #f1f1ef;
-  --affected: #d12f36;
-  --affected-bg: #fdecec;
-  --safe: #1b8a52;
-  --safe-bg: #e7f5ed;
-  --unknown: #a8690f;
-  --unknown-bg: #fdf3e2;
-  --accent: #3e63dd;
-  --accent-bg: #edf1fd;
-  --violet: #8e4ec6;
-  --code-bg: #f3f3f1;
-  --canvas-bg: #fbfbfa;
-  --radius: 10px;
-  --shadow: 0 1px 2px rgb(0 0 0 / 0.04), 0 1px 1px rgb(0 0 0 / 0.03);
-  --sans: "Inter", ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
-  --mono: "JetBrains Mono", ui-monospace, "SFMono-Regular", Menlo, Consolas, monospace;
+  --ink: #111317;
+  --copy: #5b6068;
+  --muted: #666b73;
+  --faint: #9a9ea6;
+  --line: #e3e4e7;
+  --line-strong: #d2d4d9;
+  --hover: #ececec;
+  --affected: #b42318;
+  --affected-bg: #fdecea;
+  --safe: #067647;
+  --safe-bg: #e6f4ec;
+  --unknown: #a15c07;
+  --unknown-bg: #fdf1df;
+  --accent: #2457d6;
+  --accent-bg: #e9effc;
+  --violet: #7a4cc2;
+  --code-bg: #eef0f2;
+  --canvas-bg: #fafafa;
+  --radius: 12px;
+  --shadow: 0 8px 28px rgba(16, 32, 56, 0.08);
+  --sans: "Geist", ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+  --mono: "Geist Mono", ui-monospace, "SFMono-Regular", Menlo, Consolas, monospace;
   color-scheme: light;
 }
 
@@ -30,6 +32,7 @@
     --bg: #0e0f11;
     --panel: #16171a;
     --ink: #ececef;
+    --copy: #a3a7ae;
     --muted: #a0a0aa;
     --faint: #6d6d77;
     --line: #26272c;
