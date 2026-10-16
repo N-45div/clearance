@@ -137,6 +137,8 @@ api.get("/cron/daily", async (c) => {
 });
 
 app.route("/api", api);
+// The web app is static (public/, served by the CDN); its entry page is index.html.
+app.get("/", (c) => c.redirect("/index.html"));
 app.onError((err, c) => c.json({ error: err.message }, 500));
 
 // Vercel runs this default export as a function; src/main.ts runs it locally.
