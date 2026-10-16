@@ -36,6 +36,10 @@ export type Teams = { owned: { team: string; verdicts: number; repos: string[] }
 export type GraphData = { nodes: { id: number; labels: string[]; color: string; visible: boolean; data: Record<string, string> }[]; links: unknown[] };
 export type Step = { tool: string; args: Record<string, string>; rows: number; error?: string };
 export type Answer = { answer: string; steps: Step[] };
+export type Change = {
+  repo: string; advisory: string; summary: string; fromStatus: string; toStatus: string;
+  fromSha: string; toSha: string; fromAt: string; at: string; reason: string;
+};
 
 async function get<T>(path: string): Promise<T> {
   const res = await fetch(`/api${path}`);
@@ -55,6 +59,7 @@ export const api = {
   issue: (repo: string, id: string) => get<{ title: string; body: string }>(`/issue/${repo}/${id}`),
   plan: () => get<PlannedFix[]>("/plan"),
   teams: () => get<Teams>("/teams"),
+  changes: () => get<Change[]>("/changes"),
   ask: async (question: string, history: { role: "user" | "assistant"; content: string }[]) => {
     const res = await fetch("/api/ask", {
       method: "POST",

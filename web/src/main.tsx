@@ -1,12 +1,13 @@
 import { StrictMode, useCallback, useEffect, useMemo, useState } from "react";
 import { createRoot } from "react-dom/client";
 import { api, type AdvisoryRow, type BlastRadius, type GraphData, type PlannedFix, type Step, type Summary, type Teams } from "./api";
+import { Changes } from "./Changes";
 import { Evidence } from "./Evidence";
 import { Graph } from "./Graph";
 import "./styles.css";
 
-type Tab = "advisories" | "plan" | "teams" | "ask";
-const TABS: [Tab, string][] = [["advisories", "Advisories"], ["plan", "Fix plan"], ["teams", "Teams"], ["ask", "Ask"]];
+type Tab = "advisories" | "plan" | "teams" | "changes" | "ask";
+const TABS: [Tab, string][] = [["advisories", "Advisories"], ["plan", "Fix plan"], ["teams", "Teams"], ["changes", "Changes"], ["ask", "Ask"]];
 
 const pct = (n: number, d: number) => `${d ? (n / d) * 100 : 0}%`;
 const day = (iso: string) => new Date(iso).toLocaleDateString(undefined, { day: "numeric", month: "short", year: "numeric" });
@@ -342,6 +343,7 @@ function App() {
       {tab === "advisories" && list && initialAdvisory && <Advisories list={list} initial={initialAdvisory} />}
       {tab === "plan" && <Plan />}
       {tab === "teams" && <TeamsView />}
+      {tab === "changes" && <Changes />}
       {tab === "ask" && <Ask />}
 
       <p className="foot">

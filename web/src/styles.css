@@ -257,3 +257,17 @@ td.num { font-variant-numeric: tabular-nums; text-align: right; }
   .tabs { width: 100%; }
   .tabs button { flex: 1; padding: 6px 4px; }
 }
+
+/* Changes */
+.change-btn {
+  width: 100%; text-align: left; border: 0; background: transparent; padding: 12px 16px;
+  display: grid; grid-template-columns: 170px 170px minmax(0, 1fr) auto; gap: 12px; align-items: center;
+}
+.change-btn:hover { background: var(--hover); }
+.change-btn .name { font-weight: 600; }
+.moves { display: flex; flex-wrap: wrap; gap: 6px 14px; font-size: 12.5px; }
+.move { display: inline-flex; align-items: center; gap: 4px; }
+@media (max-width: 960px) {
+  .change-btn { grid-template-columns: minmax(0, 1fr) auto; }
+  .change-btn .moves { grid-column: 1 / -1; }
+}
