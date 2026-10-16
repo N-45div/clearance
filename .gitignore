@@ -3,7 +3,6 @@ dist/
 .env
 .cache/
 *.log
-public/
 .env.*
 !.env.example
 .vercel/
