@@ -27,6 +27,19 @@ Clearance was pointed at 20 of Grafana's open-source Go services (k6, Loki, Temp
 
 One advisory from the week of the event, [GO-2026-6609](https://pkg.go.dev/vuln/GO-2026-6609) (no limit on parsed Range headers in `net/http`): a version-only scanner flags 11 services. The graph proves 7 are not affected, routes 3 to their owners (one of them only reachable through k6's `examples/secrets/mock_server.go`), and leaves 1 open.
 
+### In the scanner you already run
+
+A proof only saves time if your scanner applies it. [Trivy](https://trivy.dev) reads OpenVEX with `--vex`. Running it on the same 20 repos at the same commits, with and without each repo's VEX from Clearance:
+
+| `trivy fs --detection-priority comprehensive` on each go.mod | findings |
+|---|---|
+| without VEX | **308** |
+| with Clearance's VEX | **243** (65 suppressed, each with its justification) |
+
+In every repo the suppressed count equals the repo's "not affected" count: affected and under-investigation findings are never suppressed. Reproduce it with `node scripts/trivy-with-vex.mjs`.
+
+Trivy counts one finding per affected package, so its 308 is not the 278 above. Of the 308, 275 are the same (repo, advisory) pairs and 20 repeat one of those on another package. The other 13 are GitHub advisories with no Go vulnerability database record, which Clearance cannot judge (see below).
+
 ## How a verdict is decided
 
 1. **Blast radius.** OSV says which module versions an advisory's range covers. Every repo with a `REQUIRES` (or, for the standard library, `BUILT_WITH`) edge to one of those versions is a candidate. This is what a version-only scanner reports.
@@ -146,6 +159,31 @@ claude mcp add --transport http clearance https://clearance-lemon.vercel.app/api
 
 Tools: `fleet_summary`, `list_advisories`, `blast_radius`, `evidence`, `repo_verdicts`, `fix_plan`, `team_inbox`, `call_sites`, `run_cypher`. Each is a `GRAPH.RO_QUERY`; a write sent through `run_cypher` is refused by FalkorDB itself.
 
+## Use it on your own repo
+
+`npm run check` runs Clearance on one checkout: the same graph model and queries, in a graph of its own on any FalkorDB (`FALKORDB_URL`, default `localhost:6379`), deleted afterwards. It needs Go and govulncheck for `--run`, or the JSON and exit code of a govulncheck run you already make:
+
+```sh
+npm run check -- --run --dir ../my-service --vex openvex.json
+
+# or, from a CI step that already ran govulncheck:
+govulncheck -format json ./... > scan.json; echo $? > scan.exit
+npm run check -- --scan scan.json --scan-exit "$(cat scan.exit)" --dir . --vex openvex.json
+trivy fs --detection-priority comprehensive --vex openvex.json .
+```
+
+It prints each affected advisory with its call path, `file:line`, CODEOWNERS team and fix, then the not-affected ones with their proof, and writes the OpenVEX file. Exit codes for CI:
+
+| exit | meaning |
+|---|---|
+| 0 | nothing reachable from shipped code (`--fail-on any` also fails on example and test paths; `--fail-on never` only reports) |
+| 1 | a vulnerable function is reachable from shipped code |
+| 2 | govulncheck failed or the input is unusable: everything is under investigation, nothing is "not affected" |
+
+The exit code of govulncheck is required: with `-format json` it exits 0 whether or not it finds anything, and a failed run can still write a valid-looking file (Beyla's failed scan in [`data/scans`](data/scans) is a single config line, the same as a clean scan with no findings).
+
+Run on mimir at the fleet's pinned commit, `npm run check` gives the same 14 verdicts as the fleet graph, field for field.
+
 ## Staying current
 
 - **New advisories.** A daily job reads the Go vulnerability database index and loads any new advisory that touches a module the fleet builds with (`npm run feed`). Until the repos are rescanned, those verdicts stay under investigation.
@@ -154,7 +192,7 @@ Tools: `fleet_summary`, `list_advisories`, `blast_radius`, `evidence`, `repo_ver
 
 ## Outputs
 
-- **OpenVEX** per repo (`/api/vex/<repo>`): one statement per advisory, `not_affected` with its justification and impact statement, `affected` with the action, `under_investigation` with the reason.
+- **OpenVEX** per repo (`/api/vex/<repo>`): one statement per advisory, `not_affected` with its justification and impact statement, `affected` with the action, `under_investigation` with the reason. Each statement names the repo at its pinned commit (`pkg:github/...@sha`) and its Go module with the vulnerable module versions as subcomponents (`pkg:golang/...`), which is what scanners such as Trivy match their findings against.
 - **Issue draft** per affected verdict (`/api/issue/<repo>/<advisory>`): the call path with links to the pinned commit, the owning team, and the bump. Drafts are for copying; Clearance never posts anything.
 
 ## Run it locally
@@ -178,6 +216,7 @@ npm run build && npm start    # http://localhost:8080
 
 - All data is public: Grafana's repositories at pinned commits, OSV, and the Go vulnerability database. No personal data: CODEOWNERS entries for individual people are dropped, and only team handles are stored.
 - Reachability is only as good as govulncheck's static analysis. Function-level data exists only for Go, which is why the fleet is Go.
+- Only advisories in the Go vulnerability database carry the vulnerable functions. A GitHub advisory without a Go vulndb record gets no verdict either way; `npm run check` lists those ids. On the fleet that is 13 of Trivy's findings: 6 kin-openapi advisories from 2026-10-15 in both pyroscope and terraform-provider-grafana, and 1 loki advisory in alloy.
 - Standard-library verdicts assume the Go toolchain declared in each repo's `go.mod`. A release pipeline that builds with a newer Go may already be fixed.
 - `./...` includes example and test programs. A path that starts only in `examples/`, `tests/`, `tools/` and similar directories is marked `examples_tests_only`.
 - Two scans failed and are reported as under investigation instead of guessed: Alloy (govulncheck ran out of memory at 31 GB on `./...`, and its shipped binary is built from a separate `collector/` module) and Beyla (its packages need `go generate` for eBPF code before they type-check).
