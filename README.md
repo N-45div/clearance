@@ -11,6 +11,8 @@ Everything lives in one FalkorDB graph: the services, the module versions they b
 
 Built during Graph Hacks (WeMakeDevs x FalkorDB), Oct 15-18 2026. Tracks: **Agents That Act on Connected Data** and **Company Brain**.
 
+**Live demo: [clearance-lemon.vercel.app](https://clearance-lemon.vercel.app)** (Vercel + FalkorDB Cloud).
+
 ## What it found on a real fleet
 
 Clearance was pointed at 20 of Grafana's open-source Go services (k6, Loki, Tempo, Mimir, Pyroscope, Alloy, Beyla and others), each pinned to an exact commit ([`fleet.lock.json`](fleet.lock.json)).
