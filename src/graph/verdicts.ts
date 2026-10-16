@@ -51,15 +51,20 @@ RETURN r.name AS repo, r.sha AS sha, r.scanOk AS scanOk, r.scanExit AS scanExit,
        collect(v.path + '@' + v.version + '=>' + coalesce(m.fixed, '')) AS bumps
 ORDER BY repo, advisory`;
 
-// Affected = a call path, inside this repo's call edges, from one of its entry points to a function
-// the advisory names. The shortest path from shipped code is the evidence; failing that, the shortest one.
+// Affected = a call path through this repo's frames, from one of its entry points to a frame govulncheck
+// reported as a vulnerable call, of a function this advisory names. shortestPath is a breadth-first
+// search per (entry, target) pair, so the work stays small however much the chains branch; listing every
+// path does not (it took a 100 MB FalkorDB Cloud instance down on net/http chains). The shortest path
+// from shipped code is the evidence; failing that, the shortest one. Frames never cross repos.
 export const CALL_PATH = `
-MATCH (r:Repo {name: $repo})-[:ENTRY]->(e:Func)
-MATCH p = (e)-[:CALLS*0..30 {repo: $repo}]->(f:Func), (:Advisory {id: $advisory})-[:VULNERABLE_FUNC]->(f)
-OPTIONAL MATCH (e)-[:DEFINED_IN]->(file:File {repo: $repo})
-WITH p, file.path AS entryFile, reduce(s = '', n IN nodes(p) | s + n.key + ' ') AS sig
-RETURN [n IN nodes(p) | n.key] AS path, [n IN nodes(p) | n.module] AS modules, entryFile
-ORDER BY length(p), sig LIMIT 200`;
+MATCH (:Advisory {id: $advisory})-[:VULNERABLE_FUNC]->(:Func)<-[:IS]-(t:Frame {repo: $repo, vulnerable: true})
+MATCH (:Repo {name: $repo})-[:ENTRY]->(e:Frame)
+WITH e, shortestPath((e)-[:CALLS*1..30]->(t)) AS p
+WHERE p IS NOT NULL
+OPTIONAL MATCH (e)-[:DEFINED_IN]->(file:File)
+WITH p, length(p) AS hops, file.path AS entryFile, reduce(s = '', n IN nodes(p) | s + n.func + ' ') AS sig
+RETURN [n IN nodes(p) | n.func] AS path, [n IN nodes(p) | n.module] AS modules, entryFile, hops
+ORDER BY hops, sig LIMIT 200`;
 
 // Not affected, but imported: the vulnerable package is in the build and nothing reaches the bad code.
 export const IMPORTED = `
@@ -67,7 +72,7 @@ MATCH (:Repo {name: $repo})-[:IMPORTS]->(p:Package)<-[:VULNERABLE_PACKAGE]-(:Adv
 RETURN p.path AS pkg LIMIT 1`;
 
 const OWNER = `
-MATCH (f:Func {key: $key})-[:DEFINED_IN]->(file:File {repo: $repo})
+MATCH (:Frame {key: $repo + '|' + $key})-[:DEFINED_IN]->(file:File)
 OPTIONAL MATCH (file)-[:OWNED_BY]->(t:Team)
 RETURN file.path AS file, collect(t.handle) AS owners LIMIT 1`;
 

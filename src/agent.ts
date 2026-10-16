@@ -16,18 +16,19 @@ const obj = (props: Record<string, unknown>, required: string[] = []) => ({
 });
 
 export const SCHEMA = `Nodes: Repo{name,sha,module,stdlib,scanOk,scanNote}, Module{path}, ModuleVersion{key,path,version},
-Advisory{id,summary,published,modified,aliases,url}, Package{path}, Func{key,package,name,module}, File{repo,path},
+Advisory{id,summary,published,modified,aliases,url}, Package{path}, Func{key,package,name,module},
+Frame{key,repo,func,package,name,module} (one per function per repo, key = repo|func), File{repo,path},
 Team{handle}, OwnerRule{pattern}, Verdict{key,current,status,justification,reason,path,callSite,file,owners,bumps,decidedAt,supersededAt}.
 Edges: (Repo)-[:REQUIRES {direct}]->(ModuleVersion)-[:OF]->(Module); (Repo)-[:BUILT_WITH]->(ModuleVersion {path:'stdlib'});
 (ModuleVersion)-[:VULNERABLE_TO {fixed}]->(Advisory)-[:AFFECTS {fixed}]->(Module); (Advisory)-[:VULNERABLE_FUNC]->(Func);
-(Advisory)-[:VULNERABLE_PACKAGE]->(Package); (Repo)-[:IMPORTS]->(Package); (Repo)-[:ENTRY]->(Func);
-(Func)-[:CALLS {repo}]->(Func); (Func)-[:DEFINED_IN {line}]->(File)-[:OWNED_BY]->(Team);
+(Advisory)-[:VULNERABLE_PACKAGE]->(Package); (Repo)-[:IMPORTS]->(Package); (Repo)-[:ENTRY]->(Frame);
+(Frame)-[:CALLS]->(Frame); (Frame)-[:IS]->(Func); (Frame)-[:DEFINED_IN {line}]->(File)-[:OWNED_BY]->(Team);
 (Verdict)-[:FOR]->(Repo), (Verdict)-[:ABOUT]->(Advisory), (Verdict)-[:ROUTED_TO]->(Team), (Verdict)-[:SUPERSEDES]->(Verdict).
 Verdict.status: affected | not_affected | under_investigation | fixed. Only current:true verdicts are live.
 CALLS edges exist only on paths toward vulnerable functions (they are govulncheck evidence, not a full call graph).
-DEFINED_IN exists only for functions in a repo's own code (the callers), never for dependency functions.
+Frames of different repos never connect. DEFINED_IN exists only for frames in a repo's own code (the callers).
 Examples:
-- repos' own call sites into a package: MATCH (c:Func)-[k:CALLS]->(d:Func) WHERE d.package STARTS WITH 'golang.org/x/net/http2' MATCH (c)-[l:DEFINED_IN]->(f:File {repo: k.repo}) RETURN k.repo, f.path, l.line
+- repos' own call sites into a package: MATCH (c:Frame)-[:CALLS]->(d:Frame) WHERE d.package STARTS WITH 'golang.org/x/net/http2' MATCH (c)-[l:DEFINED_IN]->(f:File) RETURN c.repo, f.path, l.line
 - live verdicts a team must act on: MATCH (v:Verdict {current: true, status: 'affected'})-[:ROUTED_TO]->(:Team {handle: '@grafana/k6-core'}) RETURN v.key, v.file`;
 
 export const TOOLS: Record<string, Tool> = {

@@ -93,10 +93,10 @@ export async function evidence(repo: string, id: string) {
   const frames = await read(
     `MATCH (v:Verdict {key: $key, current: true})
      UNWIND range(0, size(v.path) - 1) AS i
-     MATCH (f:Func {key: v.path[i]})
-     OPTIONAL MATCH (f)-[d:DEFINED_IN]->(file:File {repo: $repo})
+     MATCH (f:Frame {key: $repo + '|' + v.path[i]})
+     OPTIONAL MATCH (f)-[d:DEFINED_IN]->(file:File)
      OPTIONAL MATCH (file)-[:OWNED_BY]->(t:Team)
-     RETURN i, f.key AS key, f.name AS name, f.package AS package, f.module AS module,
+     RETURN i, f.func AS key, f.name AS name, f.package AS package, f.module AS module,
             file.path AS file, d.line AS line, collect(t.handle) AS owners
      ORDER BY i`,
     { key, repo },
@@ -180,10 +180,10 @@ export async function repoVerdicts(repo: string) {
 // Where each repo's own code calls into a package (prefix match), with file:line and owning team.
 export async function callSites(pkg: string) {
   return read(
-    `MATCH (c:Func)-[k:CALLS]->(d:Func) WHERE d.package STARTS WITH $pkg
-     MATCH (c)-[l:DEFINED_IN]->(file:File {repo: k.repo})
+    `MATCH (c:Frame)-[:CALLS]->(d:Frame) WHERE d.package STARTS WITH $pkg
+     MATCH (c)-[l:DEFINED_IN]->(file:File)
      OPTIONAL MATCH (file)-[:OWNED_BY]->(t:Team)
-     RETURN k.repo AS repo, file.path AS file, l.line AS line, c.name AS caller,
+     RETURN c.repo AS repo, file.path AS file, l.line AS line, c.name AS caller,
             collect(DISTINCT d.package + '.' + d.name) AS calls, collect(DISTINCT t.handle) AS teams
      ORDER BY repo, file, line`,
     { pkg },
