@@ -1,8 +1,9 @@
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
+import { CACHE_DIR } from "../cache.ts";
 
 const UA = { "User-Agent": "clearance (graph hacks)" };
-const CACHE = join(import.meta.dirname, "../../.cache");
+const CACHE = CACHE_DIR;
 
 // Files are fetched at a pinned commit, so a cached copy never goes stale.
 export async function rawFile(org: string, repo: string, sha: string, path: string): Promise<string | undefined> {

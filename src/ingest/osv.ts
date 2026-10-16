@@ -1,9 +1,10 @@
 // Which advisories hit which module versions, from OSV, and the vulnerable symbols from the Go vulndb.
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
+import { CACHE_DIR } from "../cache.ts";
 import type { RangeEvent } from "./semver.ts";
 
-const CACHE = join(import.meta.dirname, "../../.cache/vulndb");
+const CACHE = join(CACHE_DIR, "vulndb");
 
 export type Pair = { path: string; version: string };
 
