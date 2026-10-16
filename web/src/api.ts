@@ -39,7 +39,10 @@ export type Answer = { answer: string; steps: Step[] };
 
 async function get<T>(path: string): Promise<T> {
   const res = await fetch(`/api${path}`);
-  if (!res.ok) throw new Error(`${path}: HTTP ${res.status}`);
+  if (!res.ok) {
+    const body = (await res.json().catch(() => ({}))) as { error?: string };
+    throw new Error(body.error ?? `${path}: HTTP ${res.status}`);
+  }
   return (await res.json()) as T;
 }
 
