@@ -25,15 +25,38 @@ export type Scan = { config: ScanConfig | undefined; findings: Finding[] };
 
 export type Level = "module" | "package" | "symbol";
 
-export async function readScan(file: string): Promise<Scan> {
+// govulncheck -format json writes a stream of indented JSON objects; scripts/scan.sh compacts them to one
+// per line with jq. Both are a sequence of top-level objects, split here by brace depth outside strings.
+export function jsonObjects(text: string): unknown[] {
+  const out: unknown[] = [];
+  let depth = 0;
+  let start = -1;
+  let inString = false;
+  for (let i = 0; i < text.length; i++) {
+    const ch = text[i];
+    if (inString) {
+      if (ch === "\\") i++;
+      else if (ch === '"') inString = false;
+    } else if (ch === '"') inString = true;
+    else if (ch === "{") {
+      if (depth++ === 0) start = i;
+    } else if (ch === "}" && --depth === 0) out.push(JSON.parse(text.slice(start, i + 1)));
+  }
+  if (depth !== 0) throw new Error("govulncheck JSON ends inside an object (truncated output)");
+  return out;
+}
+
+export function parseScan(text: string): Scan {
   const scan: Scan = { config: undefined, findings: [] };
-  for (const line of (await readFile(file, "utf8")).split("\n")) {
-    if (!line.trim()) continue;
-    const msg = JSON.parse(line) as { config?: ScanConfig; finding?: Finding };
+  for (const msg of jsonObjects(text) as { config?: ScanConfig; finding?: Finding }[]) {
     if (msg.config) scan.config = msg.config;
     if (msg.finding) scan.findings.push(msg.finding);
   }
   return scan;
+}
+
+export async function readScan(file: string): Promise<Scan> {
+  return parseScan(await readFile(file, "utf8"));
 }
 
 export function levelOf(f: Finding): Level {

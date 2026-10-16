@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { callFacts, funcKey, levelOf, repoPath, type Finding, type Scan } from "../src/ingest/scans.ts";
+import { callFacts, funcKey, levelOf, parseScan, repoPath, type Finding, type Scan } from "../src/ingest/scans.ts";
 
 const MOD = "go.k6.io/k6/v2";
 
@@ -51,4 +51,21 @@ test("callFacts keeps the strongest level and the call chain toward the vulnerab
 test("repoPath only maps frames in the repo's own module", () => {
   assert.equal(repoPath(called.trace[1]!, MOD), "internal/browser/common/connection.go");
   assert.equal(repoPath(called.trace[0]!, MOD), undefined);
+});
+
+test("parseScan reads govulncheck's indented JSON stream and the one-object-per-line form alike", () => {
+  const messages = [
+    { config: { scanner_version: "v1.9.0", go_version: "go1.26.3", db_last_modified: "2026-10-08T22:31:09Z", scan_level: "symbol" } },
+    { progress: { message: "Scanning your code {and} \"quoted\" text" } },
+    { finding: { osv: "GO-2026-6609", trace: [{ module: "stdlib", package: "net/http", function: "ServeHTTP", receiver: "fileHandler" }] } },
+  ];
+  const indented = messages.map((m) => JSON.stringify(m, null, 2)).join("\n");
+  const compact = messages.map((m) => JSON.stringify(m)).join("\n");
+  for (const text of [indented, compact]) {
+    const scan = parseScan(text);
+    assert.equal(scan.config?.scanner_version, "v1.9.0");
+    assert.equal(scan.findings.length, 1);
+    assert.equal(scan.findings[0]?.osv, "GO-2026-6609");
+  }
+  assert.throws(() => parseScan(indented.slice(0, -3)), /truncated/);
 });
