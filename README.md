@@ -184,6 +184,8 @@ The exit code of govulncheck is required: with `-format json` it exits 0 whether
 
 Run on mimir at the fleet's pinned commit, `npm run check` gives the same 14 verdicts as the fleet graph, field for field.
 
+In GitHub Actions: [`.github/workflows/check-example.yml`](.github/workflows/check-example.yml) runs it against a FalkorDB service container on grafana/smtprelay ([runs](https://github.com/N-45div/clearance/actions/workflows/check-example.yml)). The job installs govulncheck, runs `npm run check -- --run`, fails with exit 1 (20 advisories reachable from shipped code, 7 not affected, 0 under investigation), shows the outcome as an annotation, and uploads the OpenVEX file as an artifact.
+
 ## Staying current
 
 - **New advisories.** A daily job reads the Go vulnerability database index and loads any new advisory that touches a module the fleet builds with (`npm run feed`). Until the repos are rescanned, those verdicts stay under investigation.
