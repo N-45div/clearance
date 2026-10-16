@@ -7,8 +7,17 @@ let graph: Graph | undefined;
 
 export async function openGraph(): Promise<Graph> {
   if (graph) return graph;
-  client = await FalkorDB.connect({ url: process.env.FALKORDB_URL ?? "redis://localhost:6379" });
-  graph = client.selectGraph(process.env.FALKORDB_GRAPH ?? "clearance");
+  const c = await FalkorDB.connect({ url: process.env.FALKORDB_URL ?? "redis://localhost:6379" });
+  // A dropped connection must fail the request in flight, not crash the process; the next call reconnects.
+  c.on("error", (e: Error) => {
+    console.error(`falkordb: ${e.message}`);
+    if (client === c) {
+      client = undefined;
+      graph = undefined;
+    }
+  });
+  client = c;
+  graph = c.selectGraph(process.env.FALKORDB_GRAPH ?? "clearance");
   return graph;
 }
 
