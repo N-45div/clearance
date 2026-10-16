@@ -1,12 +1,12 @@
 {
   "org": "grafana",
-  "pinnedAt": "2026-10-15T13:01:42.198Z",
+  "pinnedAt": "2026-10-16T09:33:21.921Z",
   "repos": [
     {
       "repo": "k6",
       "branch": "master",
-      "sha": "3afb7be136269c18cface16e2751b9fddd42b90a",
-      "committedAt": "2026-10-15T12:21:40Z",
+      "sha": "f7209955ce31df83081d0aa03c5c8395fe6b64d8",
+      "committedAt": "2026-10-16T08:58:37Z",
       "owners": "CODEOWNERS"
     },
     {
@@ -33,8 +33,8 @@
     {
       "repo": "mimir",
       "branch": "main",
-      "sha": "b082ea4fe5eee26505481cedc9a3a634eb134dad",
-      "committedAt": "2026-10-15T11:20:12Z",
+      "sha": "c7e3bb6d895674a77b7f4e3565bbc429d28d88a1",
+      "committedAt": "2026-10-16T08:58:47Z",
       "owners": "CODEOWNERS"
     },
     {
