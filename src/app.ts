@@ -73,8 +73,8 @@ api.get("/graph/:id", async (c) => {
 
 api.get("/vex/:repo", async (c) => {
   const repo = c.req.param("repo");
-  const [r] = await read<{ org: string; sha: string; scanner: string | null }>(
-    `MATCH (r:Repo {name: $repo}) RETURN r.org AS org, r.sha AS sha, r.scanner AS scanner`,
+  const [r] = await read<{ org: string; sha: string; module: string | null; scanner: string | null }>(
+    `MATCH (r:Repo {name: $repo}) RETURN r.org AS org, r.sha AS sha, r.module AS module, r.scanner AS scanner`,
     { repo },
   );
   if (!r) return c.json({ error: "unknown repo" }, 404);
@@ -85,7 +85,7 @@ api.get("/vex/:repo", async (c) => {
      ORDER BY a.id`,
     { repo },
   );
-  const doc = vexDocument({ org: r.org, repo, sha: r.sha }, verdicts, new Date().toISOString(), `Clearance with govulncheck ${r.scanner ?? "(scan failed)"} call paths in FalkorDB`);
+  const doc = vexDocument({ org: r.org, repo, sha: r.sha, module: r.module }, verdicts, new Date().toISOString(), `Clearance with govulncheck ${r.scanner ?? "(scan failed)"} call paths in FalkorDB`);
   c.header("Content-Disposition", `attachment; filename="${repo}.openvex.json"`);
   return c.json(doc);
 });

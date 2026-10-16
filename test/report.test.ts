@@ -26,6 +26,26 @@ test("OpenVEX: one statement per verdict, with the fields the status needs", () 
   assert.equal(ui?.status_notes, "scan failed");
 });
 
+test("OpenVEX: with the Go module known, each statement also names it with the vulnerable versions as subcomponents", () => {
+  const doc = vexDocument(
+    { ...ref, module: "go.k6.io/k6/v2" },
+    [
+      { advisory: "GO-2026-6609", aliases: ["CVE-2026-1"], status: "not_affected", justification: "vulnerable_code_not_in_execute_path", reason: "nothing reaches it", bumps: ["stdlib@1.26.0=>1.26.9", "golang.org/x/net@v0.40.0=>v0.41.0"] },
+      { advisory: "GO-2022-0635", status: "under_investigation", justification: null, reason: "scan failed", bumps: [] },
+    ],
+    "2026-10-15T00:00:00Z",
+    "test",
+  );
+  const [na, ui] = doc.statements;
+  // Trivy names stdlib "pkg:golang/stdlib@v1.26.0" and keeps the module's own "v" prefix.
+  assert.deepEqual(na?.products, [
+    { "@id": `pkg:github/grafana/k6@${ref.sha}` },
+    { "@id": "pkg:golang/go.k6.io/k6/v2", subcomponents: [{ "@id": "pkg:golang/stdlib@v1.26.0" }, { "@id": "pkg:golang/golang.org/x/net@v0.40.0" }] },
+  ]);
+  // No version to name: only the pinned-commit product, never a bare module that would match every version.
+  assert.deepEqual(ui?.products, [{ "@id": `pkg:github/grafana/k6@${ref.sha}` }]);
+});
+
 test("issue draft names the call site, its owner and the fix", () => {
   const { title, body } = issueDraft({
     ref,

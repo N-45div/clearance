@@ -13,7 +13,8 @@ export type VerdictRow = {
   reach?: string | null;
 };
 
-export type RepoRef = { org: string; repo: string; sha: string };
+// module: the repo's Go module path (go.mod), which scanners such as Trivy use as the root component.
+export type RepoRef = { org: string; repo: string; sha: string; module?: string | null };
 
 const bumpText = (bumps: string[]) =>
   bumps
@@ -21,13 +22,24 @@ const bumpText = (bumps: string[]) =>
     .map((b) => (b.to ? `bump ${b.module} from ${b.from} to ${b.to}` : `${b.module} ${b.from} has no fixed version yet`))
     .join("; ");
 
+// The vulnerable module version as a Go purl, the way Trivy names it (stdlib@1.26.7 -> pkg:golang/stdlib@v1.26.7).
+const goPurl = (module: string, version: string) => {
+  const v = version.startsWith("v") ? version : "v" + version;
+  return `pkg:golang/${module}@${v}`;
+};
+
 // OpenVEX v0.2.0: https://github.com/openvex/spec/blob/main/OPENVEX-SPEC.md
+// Each statement names two products: the repo at its pinned commit, and (when the Go module is known) the
+// module with the vulnerable module versions as subcomponents. The second form is what a scanner matches
+// its findings against, so `trivy fs --vex` applies the not_affected proofs to its own results.
 export function vexDocument(ref: RepoRef, verdicts: VerdictRow[], timestamp: string, tooling: string) {
   const product = { "@id": `pkg:github/${ref.org}/${ref.repo}@${ref.sha}` };
   const statements = verdicts.map((v) => {
+    const subcomponents = v.bumps.map(parseBump).map((b) => ({ "@id": goPurl(b.module, b.from) }));
+    const goProduct = ref.module && subcomponents.length ? [{ "@id": `pkg:golang/${ref.module}`, subcomponents }] : [];
     const s: Record<string, unknown> = {
       vulnerability: { name: v.advisory, ...(v.aliases?.length ? { aliases: v.aliases } : {}) },
-      products: [product],
+      products: [product, ...goProduct],
       status: v.status,
     };
     if (v.status === "not_affected") {
