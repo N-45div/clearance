@@ -6,3 +6,6 @@ dist/
 public/
 .env.*
 !.env.example
+.vercel/
+.vercel
+.env*
