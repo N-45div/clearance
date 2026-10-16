@@ -4,3 +4,5 @@ dist/
 .cache/
 *.log
 public/
+.env.*
+!.env.example
