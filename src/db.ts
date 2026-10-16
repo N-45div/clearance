@@ -30,6 +30,16 @@ export async function writeLimits<T = Record<string, unknown>>(cypher: string, p
   return reply.data ?? [];
 }
 
+// Deletes the selected graph (used by `npm run check`, which works in a graph of its own).
+export async function dropGraph(): Promise<void> {
+  const g = await openGraph();
+  try {
+    await g.delete();
+  } catch (e) {
+    if (!/empty key|invalid graph|not exist/i.test((e as Error).message)) throw e;
+  }
+}
+
 export async function closeGraph(): Promise<void> {
   await client?.close();
   client = undefined;
