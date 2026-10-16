@@ -41,6 +41,24 @@ export async function allowAsk(ip: string, now = new Date()): Promise<Verdict> {
   return { ok: true };
 }
 
+// MCP tool calls cost no model money, but each one is a query on the free instance: a looser per-visitor cap.
+export const MCP_PER_IP_PER_HOUR = Number(process.env.MCP_PER_IP_PER_HOUR ?? 300);
+
+export async function allowMcp(ip: string, now = new Date()): Promise<Verdict> {
+  const w = windows(now);
+  const secs = Math.floor(now.getTime() / 1000);
+  const [n] = await writeLimits<{ perIp: number }>(
+    `MERGE (a:Counter {key: $key}) ON CREATE SET a.n = 0, a.expires = $expires
+     SET a.n = a.n + 1
+     RETURN a.n AS perIp`,
+    { key: `mcp:ip:${hash(ip)}:${w.hour}`, expires: secs + w.nextHour },
+  );
+  if ((n?.perIp ?? 0) > MCP_PER_IP_PER_HOUR) {
+    return { ok: false, reason: `the limit of ${MCP_PER_IP_PER_HOUR} MCP requests per visitor per hour is reached`, retryAfter: w.nextHour };
+  }
+  return { ok: true };
+}
+
 export function clientIp(headers: Headers): string {
   return headers.get("x-real-ip") ?? headers.get("x-forwarded-for")?.split(",")[0]?.trim() ?? "local";
 }

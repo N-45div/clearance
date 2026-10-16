@@ -5,7 +5,8 @@ import * as fleet from "./graph/fleet.ts";
 import { waitUntil } from "@vercel/functions";
 import { checkFeed } from "./ingest/feed.ts";
 import { isMissingGraph, rebuilding, reloadIfEmpty } from "./graph/reload.ts";
-import { allowAsk, clientIp } from "./limits.ts";
+import { allowAsk, allowMcp, clientIp } from "./limits.ts";
+import { handle as handleMcp } from "./mcp.ts";
 import { issueDraft, vexDocument, type Frame, type VerdictRow } from "./report.ts";
 
 const app = new Hono();
@@ -133,6 +134,25 @@ api.post("/ask", async (c) => {
   } catch (e) {
     return c.json({ error: (e as Error).message }, 502);
   }
+});
+
+// MCP over Streamable HTTP. Stateless: no session id, no server-sent events, so GET has nothing to stream.
+api.get("/mcp", (c) => c.json({ error: "POST JSON-RPC messages to this endpoint" }, 405, { Allow: "POST" }));
+api.post("/mcp", async (c) => {
+  const limit = await allowMcp(clientIp(c.req.raw.headers));
+  if (!limit.ok) {
+    c.header("Retry-After", String(limit.retryAfter));
+    return c.json({ jsonrpc: "2.0", id: null, error: { code: -32000, message: `Limit reached: ${limit.reason}` } }, 429);
+  }
+  let msg: unknown;
+  try {
+    msg = await c.req.json();
+  } catch {
+    return c.json({ jsonrpc: "2.0", id: null, error: { code: -32700, message: "parse error" } }, 400);
+  }
+  if (Array.isArray(msg)) return c.json({ jsonrpc: "2.0", id: null, error: { code: -32600, message: "batches are not supported" } }, 400);
+  const reply = await handleMcp(msg as Parameters<typeof handleMcp>[0]);
+  return reply ? c.json(reply) : c.body(null, 202);
 });
 
 // Vercel calls this once a day: it rebuilds the graph if the free FalkorDB Cloud instance came back
