@@ -4,6 +4,7 @@ import { api, type AdvisoryRow, type BlastRadius, type GraphData, type PlannedFi
 import { Changes } from "./Changes";
 import { Evidence } from "./Evidence";
 import { Graph } from "./Graph";
+import { Landing } from "./Landing";
 import "./styles.css";
 
 type Tab = "advisories" | "plan" | "teams" | "changes" | "ask";
@@ -295,7 +296,8 @@ function Ask() {
   );
 }
 
-function App() {
+// The console: advisories, fix plan, teams, changes and the agent.
+function Console() {
   const initialTab = (location.hash.split("/")[1] as Tab) || "advisories";
   const [tab, setTab] = useState<Tab>(TABS.some(([t]) => t === initialTab) ? initialTab : "advisories");
   const [summary, setSummary] = useState<Summary>();
@@ -318,13 +320,13 @@ function App() {
   return (
     <div className="shell">
       <header className="top">
-        <div className="brand">
+        <a className="brand" href="#/" style={{ textDecoration: "none", color: "inherit" }}>
           <Shield />
           <div>
             <h1>Clearance</h1>
             <p>Go vulnerability triage on a FalkorDB graph · Grafana fleet, pinned commits</p>
           </div>
-        </div>
+        </a>
         <nav className="tabs" role="tablist">
           {TABS.map(([t, label]) => (
             <button key={t} role="tab" aria-selected={tab === t} onClick={() => go(t)}>{label}</button>
@@ -354,4 +356,24 @@ function App() {
   );
 }
 
-createRoot(document.getElementById("root")!).render(<StrictMode><App /></StrictMode>);
+// "/" (no hash, or "#/") is the landing page; every other hash route is the console.
+// Console routes start with "#/"; in-page anchors such as "#faq" stay on the landing page.
+const isLanding = () => !location.hash.startsWith("#/") || location.hash === "#/";
+
+function Root() {
+  const [landing, setLanding] = useState(isLanding());
+  useEffect(() => {
+    const onHash = () => {
+      const next = isLanding();
+      setLanding((prev) => {
+        if (prev !== next) window.scrollTo(0, 0);
+        return next;
+      });
+    };
+    window.addEventListener("hashchange", onHash);
+    return () => window.removeEventListener("hashchange", onHash);
+  }, []);
+  return landing ? <Landing /> : <Console />;
+}
+
+createRoot(document.getElementById("root")!).render(<StrictMode><Root /></StrictMode>);
