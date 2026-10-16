@@ -41,13 +41,15 @@ async function readScans(lock: FleetLock): Promise<Map<string, { status: ScanSta
   return out;
 }
 
-if (import.meta.main) {
+// The whole build, callable from the CLI and from the API when a free FalkorDB Cloud instance has
+// restarted empty. Verdicts are decided separately (src/graph/verdicts.ts).
+export async function ingest(log: (line: string) => void = console.log): Promise<void> {
   const lock = JSON.parse(await readFile(join(ROOT, "fleet.lock.json"), "utf8")) as FleetLock;
   await ensureSchema();
   const repos = await readRepos(lock);
   const pairs = await loadRepos(lock, repos);
-  console.log(`repos ${repos.length}, module versions ${pairs.length}`);
-  console.log(`owner rules with teams ${await loadOwners(repos)}`);
+  log(`repos ${repos.length}, module versions ${pairs.length}`);
+  log(`owner rules with teams ${await loadOwners(repos)}`);
 
   const hits = await queryBatch(pairs);
   const scans = await readScans(lock);
@@ -59,25 +61,29 @@ if (import.meta.main) {
   for (const id of goIds) advisories.set(id, await goAdvisory(id));
   const aliased = new Set([...advisories.values()].flatMap((a) => a.aliases));
   const unreviewed = [...ids].filter((id) => !id.startsWith("GO-") && !aliased.has(id));
-  console.log(`advisories ${goIds.length} (Go vulndb), ${unreviewed.length} other ids with no Go vulndb record`);
+  log(`advisories ${goIds.length} (Go vulndb), ${unreviewed.length} other ids with no Go vulndb record`);
 
-  console.log(`vulnerable functions ${await loadAdvisories([...advisories.values()])}`);
+  log(`vulnerable functions ${await loadAdvisories([...advisories.values()])}`);
   // Advisories the feed added are judged on the scans once those scans are newer than the advisory.
   await write(
     `MATCH (r:Repo) WHERE r.scanDb IS NOT NULL WITH min(r.scanDb) AS db
      MATCH (a:Advisory) WHERE a.addedAfterScan AND a.modified <= db REMOVE a.addedAfterScan`,
   );
-  console.log(`version matches ${await loadMatches(hits, advisories)}`);
+  log(`version matches ${await loadMatches(hits, advisories)}`);
 
   for (const repo of repos) {
     const s = scans.get(repo.name);
     if (!s) {
-      console.log(`${repo.name.padEnd(28)} not scanned`);
+      log(`${repo.name.padEnd(28)} not scanned`);
       continue;
     }
     const n = await loadScan(repo, s.status, s.scan);
     const state = s.status.ok ? "ok" : `FAILED (exit ${s.status.exit})`;
-    console.log(`${repo.name.padEnd(28)} scan ${state}: imports ${n.imports}, call edges ${n.calls}, entries ${n.entries}, owned files ${n.files}`);
+    log(`${repo.name.padEnd(28)} scan ${state}: imports ${n.imports}, call edges ${n.calls}, entries ${n.entries}, owned files ${n.files}`);
   }
+}
+
+if (import.meta.main) {
+  await ingest();
   await closeGraph();
 }
