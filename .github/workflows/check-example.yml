@@ -7,7 +7,7 @@ on:
   # Runs when this file changes, and on demand from the Actions tab.
   push:
     branches: [main]
-    paths: [.github/workflows/check-example.yml, src/check.ts]
+    paths: [.github/workflows/check-example.yml, "src/**"]
   workflow_dispatch:
     inputs:
       repo:
