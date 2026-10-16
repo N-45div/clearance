@@ -225,7 +225,7 @@ npm run build && npm start    # http://localhost:8080
 
 ## Built with AI assistance
 
-As the rules ask: I built Clearance with an AI coding assistant (Claude Code). I chose the problem and the design, reviewed the code, ran every step against the real data, and can explain the graph model, the queries and each decision.
+Built in coordination with an AI coding assistant, Claude Code.
 
 ## License
 
