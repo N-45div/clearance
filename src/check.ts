@@ -14,7 +14,7 @@
 import { execFileSync, spawnSync } from "node:child_process";
 import { mkdtemp, readFile, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { basename, join, resolve } from "node:path";
+import { join, resolve } from "node:path";
 import { parseArgs } from "node:util";
 import { closeGraph, dropGraph, read } from "./db.ts";
 import { loadAdvisories, loadMatches, loadOwners, loadRepos, loadScan } from "./graph/load.ts";
@@ -49,6 +49,13 @@ const readOptional = async (path: string) => {
   }
 };
 
+// The repo's name from its module path, skipping a major-version suffix (github.com/grafana/smtprelay/v2).
+export function repoName(module: string): string {
+  const parts = module.split("/");
+  const last = parts.at(-1) ?? module;
+  return /^v\d+$/.test(last) && parts.length > 1 ? parts.at(-2)! : last;
+}
+
 function gitHead(dir: string): string | undefined {
   try {
     return execFileSync("git", ["-C", dir, "rev-parse", "HEAD"], { encoding: "utf8", stdio: ["ignore", "pipe", "ignore"] }).trim();
@@ -72,7 +79,7 @@ export async function check(opts: { scan: string; scanExit: number; dir: string;
   const goModText = await readOptional(join(dir, "go.mod"));
   if (!goModText) throw new Error(`no go.mod in ${dir}`);
   const mod = parseGoMod(goModText);
-  const name = opts.name ?? basename(mod.module);
+  const name = opts.name ?? repoName(mod.module);
   const sha = opts.sha ?? gitHead(dir) ?? "unknown";
   // Its own graph, so a check never touches the fleet graph on the same server. db.ts reads this when it
   // first connects, which is below.

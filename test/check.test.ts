@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { exitCode, report, type CheckResult } from "../src/check.ts";
+import { exitCode, repoName, report, type CheckResult } from "../src/check.ts";
 import type { Decision } from "../src/graph/verdicts.ts";
 
 const decision = (over: Partial<Decision>): Decision => ({
@@ -53,6 +53,13 @@ test("report: file:line, owner and fix for affected; examples apart; no-vulndb i
   assert.match(text, /affected, only from examples, tests or tooling: 1\n {2}GO-2026-0003 /);
   assert.match(text, /not affected \(proof: no call path\): 1/);
   assert.match(text, /no Go vulndb record, so no function data to judge: GHSA-xxxx-yyyy-zzzz/);
+});
+
+test("repo name skips a Go major-version suffix", () => {
+  assert.equal(repoName("github.com/grafana/smtprelay/v2"), "smtprelay");
+  assert.equal(repoName("go.k6.io/k6/v2"), "k6");
+  assert.equal(repoName("github.com/grafana/mimir"), "mimir");
+  assert.equal(repoName("example"), "example");
 });
 
 test("report: an unusable scan says nothing is proven safe", () => {
