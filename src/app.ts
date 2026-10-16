@@ -27,6 +27,7 @@ api.get("/repos", async (c) => c.json(await fleet.repos()));
 api.get("/repos/:repo", async (c) => c.json(await fleet.repoVerdicts(c.req.param("repo"))));
 api.get("/plan", async (c) => c.json(await fleet.fixPlan()));
 api.get("/teams", async (c) => c.json(await fleet.teams()));
+api.get("/changes", async (c) => c.json(await fleet.changes()));
 
 api.get("/evidence/:repo/:id", async (c) => {
   const ev = await fleet.evidence(c.req.param("repo"), c.req.param("id"));

@@ -189,3 +189,15 @@ export async function callSites(pkg: string) {
     { pkg },
   );
 }
+
+// What the graph re-decided and why: every live verdict that superseded an older one, newest first.
+export async function changes(limit = 200) {
+  return read(
+    `MATCH (n:Verdict {current: true})-[:SUPERSEDES]->(o:Verdict), (n)-[:FOR]->(r:Repo), (n)-[:ABOUT]->(a:Advisory)
+     RETURN r.name AS repo, a.id AS advisory, a.summary AS summary, o.status AS fromStatus, n.status AS toStatus,
+            o.repoSha AS fromSha, n.repoSha AS toSha, o.decidedAt AS fromAt, n.decidedAt AS at, n.reason AS reason
+     ORDER BY at DESC, repo, advisory
+     LIMIT $limit`,
+    { limit },
+  );
+}
