@@ -4,6 +4,10 @@
 name: clearance check (example)
 
 on:
+  # Runs when this file changes, and on demand from the Actions tab.
+  push:
+    branches: [main]
+    paths: [.github/workflows/check-example.yml]
   workflow_dispatch:
     inputs:
       repo:
@@ -32,8 +36,8 @@ jobs:
           path: clearance
       - uses: actions/checkout@v5
         with:
-          repository: ${{ inputs.repo }}
-          ref: ${{ inputs.ref }}
+          repository: ${{ inputs.repo || 'grafana/smtprelay' }}
+          ref: ${{ inputs.ref || '4821afa7c7791089ec6aa777c99007664e281175' }}
           path: target
       - uses: actions/setup-go@v6
         with:
@@ -48,7 +52,7 @@ jobs:
         working-directory: clearance
         run: |
           set -o pipefail
-          npm run --silent check -- --run --dir ../target --sha "${{ inputs.ref }}" --vex ../openvex.json | tee ../report.txt
+          npm run --silent check -- --run --dir ../target --sha "${{ inputs.ref || '4821afa7c7791089ec6aa777c99007664e281175' }}" --vex ../openvex.json | tee ../report.txt
       - name: summary
         if: always()
         run: |
