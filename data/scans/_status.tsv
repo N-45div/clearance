@@ -1,5 +1,5 @@
 loki	932dea5dc3b59bb2f3ef7ce38ddf87821ca4ebbe	go1.27.2	0	26	/home/DivijN/clearance-scan/loki
-k6	3afb7be136269c18cface16e2751b9fddd42b90a	go1.26.0	0	57	/home/DivijN/clearance-scan/k6
+k6	f7209955ce31df83081d0aa03c5c8395fe6b64d8	go1.26.0	0	42	/home/DivijN/clearance-scan/k6
 pyroscope	6ec11a590912a4ff03b7e243bb4bd939387027ab	go1.26.9	0	89	/home/DivijN/clearance-scan/pyroscope
 mcp-grafana	5ea0cc34678cdd6fcd2f5c731b6619a8433bcb20	go1.26.9	0	31	/home/DivijN/clearance-scan/mcp-grafana
 tanka	13f3986c242672494fa23a55b80283c086b736bb	go1.27.2	0	9	/home/DivijN/clearance-scan/tanka
@@ -7,7 +7,7 @@ tempo	c478488929811c041227991f1b0601864dab7c8c	go1.27.2	0	146	/home/DivijN/clear
 beyla	c02d16f9fc4384c858c0879b185ba4912a7e17c1	go1.26.8	1	23	/home/DivijN/clearance-scan/beyla
 grafana-operator	d30a7a9a5757e0bd101ddfed08cc3bbd42584238	go1.27.2	0	18	/home/DivijN/clearance-scan/grafana-operator
 k6-operator	1eaf25e1db858153548054ac97bfaad17ae29610	go1.26.9	0	12	/home/DivijN/clearance-scan/k6-operator
-mimir	b082ea4fe5eee26505481cedc9a3a634eb134dad	go1.26.7	0	136	/home/DivijN/clearance-scan/mimir
+mimir	c7e3bb6d895674a77b7f4e3565bbc429d28d88a1	go1.26.7	0	104	/home/DivijN/clearance-scan/mimir
 carbon-relay-ng	f40c3a67bf51361ae4bb374a9a95d7a65712b0a1	go1.26.9	0	33	/home/DivijN/clearance-scan/carbon-relay-ng
 synthetic-monitoring-agent	ab5ebdd3152c8f93c5062bf94bfb0172101768d5	go1.26.0	0	40	/home/DivijN/clearance-scan/synthetic-monitoring-agent
 smtprelay	4821afa7c7791089ec6aa777c99007664e281175	go1.26.3	0	41	/home/DivijN/clearance-scan/smtprelay
