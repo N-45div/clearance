@@ -125,7 +125,7 @@ OPTIONAL MATCH (file)-[:OWNED_BY]->(t:Team)
 RETURN c.repo AS repo, file.path AS file, l.line AS line, collect(DISTINCT t.handle) AS teams
 ```
 
-The fix plan, the team inbox, the verdict history and the canvas view are in [`src/graph/fleet.ts`](src/graph/fleet.ts) and [`src/app.ts`](src/app.ts).
+The fix plan, the team inbox, the verdict history, the changes feed and the canvas view are in [`src/graph/fleet.ts`](src/graph/fleet.ts) and [`src/app.ts`](src/app.ts).
 
 ## The agent
 
@@ -135,6 +135,22 @@ The Ask tab is a triage agent (OpenAI, `gpt-5.4-mini` by default). It picks from
 - `run_cypher` gets a 5-second FalkorDB timeout and a 50-row cap; each model call gets 60 seconds.
 - "Under investigation" is never presented as safe; verdicts reachable only from examples or tests are called out as lower priority.
 - On the public demo the Ask tab is capped per visitor and per day. The counters live in the same FalkorDB server, and visitor IPs are stored only as salted hashes that expire.
+
+## Use it from your own agent (MCP)
+
+The same read-only tools are an MCP server (Streamable HTTP, stateless) at `/api/mcp`:
+
+```sh
+claude mcp add --transport http clearance https://clearance-lemon.vercel.app/api/mcp
+```
+
+Tools: `fleet_summary`, `list_advisories`, `blast_radius`, `evidence`, `repo_verdicts`, `fix_plan`, `team_inbox`, `call_sites`, `run_cypher`. Each is a `GRAPH.RO_QUERY`; a write sent through `run_cypher` is refused by FalkorDB itself.
+
+## Staying current
+
+- **New advisories.** A daily job reads the Go vulnerability database index and loads any new advisory that touches a module the fleet builds with (`npm run feed`). Until the repos are rescanned, those verdicts stay under investigation.
+- **New commits.** `npm run pin -- mimir k6` moves only those repos to their current head. Their old call chains are dropped and their verdicts become "under investigation: no reachability scan at this commit yet". After `scripts/scan.sh` rescans them, `npm run ingest && npm run decide` decides them again. Each step is a new `Verdict` that `SUPERSEDES` the last; the **Changes** tab and every verdict's history show the chain. On Oct 16, mimir and k6 went through exactly this: *affected at b082ea4f, then under investigation at c7e3bb6d, then affected at c7e3bb6d with fresh evidence*.
+- **A wiped database.** The free FalkorDB Cloud instance keeps nothing across a restart. When a request finds the graph missing, the app takes a lock and rebuilds it from the public sources and the committed scans (about a minute), answering "being rebuilt" meanwhile. The rebuild starts the history afresh.
 
 ## Outputs
 
