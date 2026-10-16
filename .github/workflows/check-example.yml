@@ -7,7 +7,7 @@ on:
   # Runs when this file changes, and on demand from the Actions tab.
   push:
     branches: [main]
-    paths: [.github/workflows/check-example.yml]
+    paths: [.github/workflows/check-example.yml, src/check.ts]
   workflow_dispatch:
     inputs:
       repo:
@@ -45,14 +45,16 @@ jobs:
       - uses: actions/setup-node@v5
         with:
           node-version: 24
-      - run: go install golang.org/x/vuln/cmd/govulncheck@v1.9.0
+      - run: |
+          go install golang.org/x/vuln/cmd/govulncheck@v1.9.0
+          echo "$(go env GOPATH)/bin" >> "$GITHUB_PATH"
       - run: npm ci --omit=dev
         working-directory: clearance
       - name: clearance check
         working-directory: clearance
         run: |
           set -o pipefail
-          npm run --silent check -- --run --dir ../target --sha "${{ inputs.ref || '4821afa7c7791089ec6aa777c99007664e281175' }}" --vex ../openvex.json | tee ../report.txt
+          npm run --silent check -- --run --dir ../target --sha "${{ inputs.ref || '4821afa7c7791089ec6aa777c99007664e281175' }}" --vex ../openvex.json 2>&1 | tee ../report.txt
       - name: summary
         if: always()
         run: |
