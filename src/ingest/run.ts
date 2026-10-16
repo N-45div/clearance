@@ -74,7 +74,9 @@ export async function ingest(log: (line: string) => void = console.log): Promise
   for (const repo of repos) {
     const s = scans.get(repo.name);
     if (!s) {
-      log(`${repo.name.padEnd(28)} not scanned`);
+      // Pinned to a commit no scan covers yet: drop the old commit's call chains, claim nothing.
+      await loadScan(repo, { repo: repo.name, ok: false, exit: -1, toolchain: "", note: "no reachability scan at this commit yet" }, undefined);
+      log(`${repo.name.padEnd(28)} not scanned at its pinned commit`);
       continue;
     }
     const n = await loadScan(repo, s.status, s.scan);
