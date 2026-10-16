@@ -2,7 +2,9 @@ import { Hono } from "hono";
 import { ask, type Turn } from "./agent.ts";
 import { read } from "./db.ts";
 import * as fleet from "./graph/fleet.ts";
+import { waitUntil } from "@vercel/functions";
 import { checkFeed } from "./ingest/feed.ts";
+import { isMissingGraph, reloadIfEmpty } from "./graph/reload.ts";
 import { allowAsk, clientIp } from "./limits.ts";
 import { issueDraft, vexDocument, type Frame, type VerdictRow } from "./report.ts";
 
@@ -125,21 +127,35 @@ api.post("/ask", async (c) => {
   }
 });
 
-// Vercel calls this once a day: it keeps the free FalkorDB Cloud instance in use (it stops after a
-// day idle) and loads any new Go advisory that touches the fleet. It writes, so it needs CRON_SECRET.
+// Vercel calls this once a day: it rebuilds the graph if the free FalkorDB Cloud instance came back
+// empty, keeps the instance in use (it stops after a day idle), and loads any new Go advisory that
+// touches the fleet. It writes, so it needs CRON_SECRET.
 api.get("/cron/daily", async (c) => {
   const secret = process.env.CRON_SECRET;
   if (!secret) return c.json({ error: "CRON_SECRET is not set" }, 503);
   if (c.req.header("authorization") !== `Bearer ${secret}`) return c.json({ error: "unauthorized" }, 401);
+  const reload = await reloadIfEmpty();
   const [r] = await read<{ repos: number }>(`MATCH (r:Repo) RETURN count(r) AS repos`);
   const feed = await checkFeed();
-  return c.json({ ok: true, repos: r?.repos ?? 0, feed, at: new Date().toISOString() });
+  return c.json({ ok: true, reload, repos: r?.repos ?? 0, feed, at: new Date().toISOString() });
 });
 
 app.route("/api", api);
 // The web app is static (public/, served by the CDN); its entry page is index.html.
 app.get("/", (c) => c.redirect("/index.html"));
-app.onError((err, c) => c.json({ error: err.message }, 500));
+app.onError((err, c) => {
+  // The graph is gone (a free instance restarted): start one rebuild in the background and say so.
+  if (isMissingGraph(err)) {
+    const rebuild = reloadIfEmpty().catch((e: Error) => console.error(`reload failed: ${e.message}`));
+    try {
+      waitUntil(rebuild);
+    } catch {
+      void rebuild;
+    }
+    return c.json({ error: "The graph is being rebuilt (the free FalkorDB Cloud instance restarted). Try again in a minute.", rebuilding: true }, 503);
+  }
+  return c.json({ error: err.message }, 500);
+});
 
 // Vercel runs this default export as a function; src/main.ts runs it locally.
 export default app;
