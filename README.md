@@ -28,7 +28,7 @@ One advisory from the week of the event, [GO-2026-6609](https://pkg.go.dev/vuln/
 ## How a verdict is decided
 
 1. **Blast radius.** OSV says which module versions an advisory's range covers. Every repo with a `REQUIRES` (or, for the standard library, `BUILT_WITH`) edge to one of those versions is a candidate. This is what a version-only scanner reports.
-2. **Reachability.** [govulncheck](https://go.dev/doc/security/vuln/) ran on each repo at its pinned commit and declared toolchain ([`scripts/scan.sh`](scripts/scan.sh)). Its call stacks are loaded as `CALLS` edges scoped to the repo. If a path runs from one of the repo's entry points to a function the advisory names, the repo is **affected**, and the shortest path from shipped code is the evidence.
+2. **Reachability.** [govulncheck](https://go.dev/doc/security/vuln/) ran on each repo at its pinned commit and declared toolchain ([`scripts/scan.sh`](scripts/scan.sh)). Its call stacks are loaded as `Frame` nodes that belong to that repo, joined by `CALLS` edges. If `shortestPath` finds a path from one of the repo's entry points to a frame govulncheck reported as a vulnerable call of a function the advisory names, the repo is **affected**, and the shortest path from shipped code is the evidence.
 3. **No path.** If the repo imports the vulnerable package but no path reaches the vulnerable functions, it is **not affected** (`vulnerable_code_not_in_execute_path`). If it only requires the module and never imports the package, it is **not affected** (`vulnerable_code_not_present`).
 4. **Never guess.** If a repo's scan failed, or the advisory is newer than the vulnerability database the scan used, the verdict is **under investigation** and says why.
 5. **Route.** Walking back from the vulnerable function, the first frame in the repo's own code is the call site. Its file resolves through CODEOWNERS (last match wins) to a team.
@@ -49,9 +49,10 @@ graph LR
   Advisory -- VULNERABLE_FUNC --> Func
   Package -- IN --> Module
   Repo -- IMPORTS --> Package
-  Repo -- ENTRY --> Func
-  Func -- "CALLS {repo}" --> Func
-  Func -- "DEFINED_IN {line}" --> File
+  Repo -- ENTRY --> Frame
+  Frame -- CALLS --> Frame
+  Frame -- IS --> Func
+  Frame -- "DEFINED_IN {line}" --> File
   File -- OWNED_BY --> Team
   Repo -- HAS_RULE --> OwnerRule
   OwnerRule -- ASSIGNS --> Team
@@ -67,10 +68,11 @@ graph LR
 | `Module`, `ModuleVersion` | `path`; `key` = `path@version` |
 | `Advisory` | `id` (Go vulndb), `summary`, `published`, `modified`, `aliases` |
 | `Package`, `Func` | Go package path; `key` = `package.Receiver.Name` |
+| `Frame` | a function as it appears in one repo's call chains: `key` = `repo|func`, `vulnerable` = govulncheck reported it as the vulnerable call |
 | `File`, `Team`, `OwnerRule` | file path in a repo; CODEOWNERS team handle; CODEOWNERS pattern |
 | `Verdict` | `status`, `justification`, `reason`, `path`, `callSite`, `file`, `owners`, `bumps`, `reach`, `decidedAt`, `supersededAt`, `current` |
 
-`CALLS` edges are govulncheck's evidence (the call stacks it found toward vulnerable code), not a full call graph. Only CODEOWNERS **teams** are stored; handles of individual people are dropped at ingest.
+`CALLS` edges are govulncheck's evidence (the call stacks it found toward vulnerable code), not a full call graph. Frames of different repos never connect, so a path query for one repo cannot wander into another's chains. Only CODEOWNERS **teams** are stored; handles of individual people are dropped at ingest.
 
 ## The Cypher it depends on
 
@@ -85,13 +87,17 @@ RETURN r.name AS repo, a.id AS advisory,
 Affected: a call path inside one repo's call edges, from an entry point to a function the advisory names:
 
 ```cypher
-MATCH (r:Repo {name: $repo})-[:ENTRY]->(e:Func)
-MATCH p = (e)-[:CALLS*0..30 {repo: $repo}]->(f:Func), (:Advisory {id: $advisory})-[:VULNERABLE_FUNC]->(f)
-OPTIONAL MATCH (e)-[:DEFINED_IN]->(file:File {repo: $repo})
-WITH p, file.path AS entryFile, reduce(s = '', n IN nodes(p) | s + n.key + ' ') AS sig
-RETURN [n IN nodes(p) | n.key] AS path, [n IN nodes(p) | n.module] AS modules, entryFile
-ORDER BY length(p), sig LIMIT 200
+MATCH (:Advisory {id: $advisory})-[:VULNERABLE_FUNC]->(:Func)<-[:IS]-(t:Frame {repo: $repo, vulnerable: true})
+MATCH (:Repo {name: $repo})-[:ENTRY]->(e:Frame)
+WITH e, shortestPath((e)-[:CALLS*1..30]->(t)) AS p
+WHERE p IS NOT NULL
+OPTIONAL MATCH (e)-[:DEFINED_IN]->(file:File)
+WITH p, length(p) AS hops, file.path AS entryFile, reduce(s = '', n IN nodes(p) | s + n.func + ' ') AS sig
+RETURN [n IN nodes(p) | n.func] AS path, [n IN nodes(p) | n.module] AS modules, entryFile, hops
+ORDER BY hops, sig LIMIT 200
 ```
+
+An earlier version listed every path with `[:CALLS*0..30]` and sorted them. On `net/http`'s branching call chains that took a 100 MB FalkorDB Cloud instance down; `shortestPath` is a breadth-first search per entry and target, so it stays small.
 
 Not affected, imported but unreached:
 
@@ -103,7 +109,7 @@ RETURN p.path AS pkg LIMIT 1
 Owner of the call site:
 
 ```cypher
-MATCH (f:Func {key: $key})-[:DEFINED_IN]->(file:File {repo: $repo})
+MATCH (:Frame {key: $repo + '|' + $key})-[:DEFINED_IN]->(file:File)
 OPTIONAL MATCH (file)-[:OWNED_BY]->(t:Team)
 RETURN file.path AS file, collect(t.handle) AS owners
 ```
@@ -111,10 +117,10 @@ RETURN file.path AS file, collect(t.handle) AS owners
 Where a repo's own code calls into a package ([`src/graph/fleet.ts`](src/graph/fleet.ts)):
 
 ```cypher
-MATCH (c:Func)-[k:CALLS]->(d:Func) WHERE d.package STARTS WITH $pkg
-MATCH (c)-[l:DEFINED_IN]->(file:File {repo: k.repo})
+MATCH (c:Frame)-[:CALLS]->(d:Frame) WHERE d.package STARTS WITH $pkg
+MATCH (c)-[l:DEFINED_IN]->(file:File)
 OPTIONAL MATCH (file)-[:OWNED_BY]->(t:Team)
-RETURN k.repo AS repo, file.path AS file, l.line AS line, collect(DISTINCT t.handle) AS teams
+RETURN c.repo AS repo, file.path AS file, l.line AS line, collect(DISTINCT t.handle) AS teams
 ```
 
 The fix plan, the team inbox, the verdict history and the canvas view are in [`src/graph/fleet.ts`](src/graph/fleet.ts) and [`src/app.ts`](src/app.ts).
@@ -138,7 +144,7 @@ The Ask tab is a triage agent (OpenAI, `gpt-5.4-mini` by default). It picks from
 Needs Docker and Node 24.
 
 ```sh
-docker compose up -d          # FalkorDB 6.0.2 on 6379, FalkorDB Browser on http://localhost:3000
+docker compose up -d          # FalkorDB 6.0.2 on 6379, FalkorDB Browser on http://localhost:3000 (the live demo runs on FalkorDB Cloud)
 npm install
 cp .env.example .env          # add OPENAI_API_KEY for the Ask tab; everything else works without it
 npm run ingest                # repos at pinned commits, go.mod, CODEOWNERS, OSV + Go vulndb, data/scans
