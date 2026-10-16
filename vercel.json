@@ -2,10 +2,9 @@
   "$schema": "https://openapi.vercel.sh/vercel.json",
   "framework": "hono",
   "buildCommand": "npm run build",
-  "crons": [
-    {
-      "path": "/api/cron/daily",
-      "schedule": "17 6 * * *"
-    }
-  ]
+  "regions": ["bom1"],
+  "functions": {
+    "src/app.ts": { "maxDuration": 300, "includeFiles": "{fleet.lock.json,data/**}" }
+  },
+  "crons": [{ "path": "/api/cron/daily", "schedule": "17 6 * * *" }]
 }
