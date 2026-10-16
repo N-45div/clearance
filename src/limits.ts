@@ -1,8 +1,8 @@
-// Caps on the Ask tab, the only part of the app that costs money (a model call). Counters live in
-// the FalkorDB server's Redis keyspace so every serverless instance sees the same numbers. Visitor IPs
-// are hashed and expire with their window; the raw address is never stored.
+// Caps on the Ask tab, the only part of the app that costs money (a model call). Counters are nodes in
+// a small separate graph on the FalkorDB server, so every serverless instance sees the same numbers.
+// Visitor IPs are hashed with a salt and their counters expire with the hour; the raw address is never stored.
 import { createHash } from "node:crypto";
-import { redis } from "./db.ts";
+import { writeLimits } from "./db.ts";
 
 export const PER_IP_PER_HOUR = Number(process.env.ASK_PER_IP_PER_HOUR ?? 20);
 export const PER_DAY = Number(process.env.ASK_PER_DAY ?? 300);
@@ -21,15 +21,23 @@ export function windows(now: Date) {
 }
 
 export async function allowAsk(ip: string, now = new Date()): Promise<Verdict> {
-  const r = await redis();
   const w = windows(now);
-  const ipKey = `clearance:ask:ip:${hash(ip)}:${w.hour}`;
-  const dayKey = `clearance:ask:day:${w.day}`;
-  const [perIp, perDay] = await Promise.all([r.incr(ipKey), r.incr(dayKey)]);
-  if (perIp === 1) await r.expire(ipKey, w.nextHour + 60);
-  if (perDay === 1) await r.expire(dayKey, w.nextDay + 60);
-  if (perDay > PER_DAY) return { ok: false, reason: `the demo's daily limit of ${PER_DAY} questions is used up`, retryAfter: w.nextDay };
-  if (perIp > PER_IP_PER_HOUR) return { ok: false, reason: `the limit of ${PER_IP_PER_HOUR} questions per visitor per hour is reached`, retryAfter: w.nextHour };
+  const secs = Math.floor(now.getTime() / 1000);
+  // One query, so both counters move together; MERGE + SET runs atomically on the server.
+  const [n] = await writeLimits<{ perIp: number; perDay: number }>(
+    `MERGE (a:Counter {key: $ipKey}) ON CREATE SET a.n = 0, a.expires = $ipExpires
+     SET a.n = a.n + 1
+     MERGE (d:Counter {key: $dayKey}) ON CREATE SET d.n = 0, d.expires = $dayExpires
+     SET d.n = d.n + 1
+     RETURN a.n AS perIp, d.n AS perDay`,
+    {
+      ipKey: `ask:ip:${hash(ip)}:${w.hour}`, ipExpires: secs + w.nextHour,
+      dayKey: `ask:day:${w.day}`, dayExpires: secs + w.nextDay,
+    },
+  );
+  await writeLimits(`MATCH (c:Counter) WHERE c.expires < $now DELETE c`, { now: secs });
+  if ((n?.perDay ?? 0) > PER_DAY) return { ok: false, reason: `the demo's daily limit of ${PER_DAY} questions is used up`, retryAfter: w.nextDay };
+  if ((n?.perIp ?? 0) > PER_IP_PER_HOUR) return { ok: false, reason: `the limit of ${PER_IP_PER_HOUR} questions per visitor per hour is reached`, retryAfter: w.nextHour };
   return { ok: true };
 }
 

@@ -21,10 +21,13 @@ export async function openGraph(): Promise<Graph> {
   return graph;
 }
 
-// The same FalkorDB server speaks plain Redis, which holds the Ask rate-limit counters.
-export async function redis() {
+// A second graph on the same server for the Ask rate-limit counters, kept apart from the fleet graph
+// that the agent can query. (FalkorDB Cloud's user may run graph commands but not plain Redis ones.)
+export async function writeLimits<T = Record<string, unknown>>(cypher: string, params: Params = {}): Promise<T[]> {
   await openGraph();
-  return client!.connection;
+  const reply = await client!.selectGraph(`${process.env.FALKORDB_GRAPH ?? "clearance"}_limits`)
+    .query<T>(cypher, { params: params as never, TIMEOUT: 5_000 });
+  return reply.data ?? [];
 }
 
 export async function closeGraph(): Promise<void> {
