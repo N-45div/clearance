@@ -4,12 +4,20 @@ import { read } from "./db.ts";
 import * as fleet from "./graph/fleet.ts";
 import { waitUntil } from "@vercel/functions";
 import { checkFeed } from "./ingest/feed.ts";
-import { isMissingGraph, reloadIfEmpty } from "./graph/reload.ts";
+import { isMissingGraph, rebuilding, reloadIfEmpty } from "./graph/reload.ts";
 import { allowAsk, clientIp } from "./limits.ts";
 import { issueDraft, vexDocument, type Frame, type VerdictRow } from "./report.ts";
 
 const app = new Hono();
 const api = new Hono();
+
+const REBUILDING = "The graph is being rebuilt (the free FalkorDB Cloud instance restarted). Try again in a minute.";
+
+// While a rebuild runs the graph is half-built; say so instead of answering from it.
+api.use("*", async (c, next) => {
+  if (!c.req.path.startsWith("/api/cron/") && (await rebuilding())) return c.json({ error: REBUILDING, rebuilding: true }, 503);
+  await next();
+});
 
 api.get("/summary", async (c) => c.json(await fleet.summary()));
 api.get("/advisories", async (c) => c.json(await fleet.advisories()));
@@ -152,7 +160,7 @@ app.onError((err, c) => {
     } catch {
       void rebuild;
     }
-    return c.json({ error: "The graph is being rebuilt (the free FalkorDB Cloud instance restarted). Try again in a minute.", rebuilding: true }, 503);
+    return c.json({ error: REBUILDING, rebuilding: true }, 503);
   }
   return c.json({ error: err.message }, 500);
 });

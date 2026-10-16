@@ -29,6 +29,16 @@ async function takeLock(seconds: number): Promise<boolean> {
   return !!r?.free;
 }
 
+// True while a rebuild holds the lock: the graph exists but is half-built, so answers would be wrong.
+export async function rebuilding(): Promise<boolean> {
+  const now = Math.floor(Date.now() / 1000);
+  const [r] = await writeLimits<{ busy: boolean }>(
+    `OPTIONAL MATCH (l:Lock {key: 'reload'}) RETURN coalesce(l.until > $now, false) AS busy`,
+    { now },
+  );
+  return !!r?.busy;
+}
+
 async function releaseLock() {
   await writeLimits(`MATCH (l:Lock {key: 'reload'}) SET l.until = 0`);
 }
