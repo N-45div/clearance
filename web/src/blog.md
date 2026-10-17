@@ -160,9 +160,19 @@ One more free-tier constraint: the Cloud user isn't allowed plain Redis commands
 
 Sixty-five alerts that someone would otherwise have triaged by hand now come with a proof attached. The other 195 come with the line of code to look at and the name of the team that owns it.
 
+## A bug I found in FalkorDB itself
+
+Clearance's advisory list counts verdicts per advisory with `sum(CASE …)`, grouped by four advisory properties. On FalkorDB 6.0.2 those sums came back equal to `count()`. I worked around it by aggregating on the advisory node first, then projecting the properties, and kept building. After submitting, I went back to it.
+
+I ran the same queries against three engines side by side: FalkorDB 6.0.2, the newest 6.x development build, and the older 4.22 C engine. It was much bigger than my one query. On the 6.x engine, any query that groups by more values than it has bound variables gets its later aggregates wrong. `MATCH (n:P) RETURN n.country, n.city, count(n), sum(n.age)` returns the count as the sum, and with `avg()` instead of `sum()` the query crashes the whole server. The 4.22 engine gets every case right.
+
+The cause was one line. When FalkorDB finishes a group, it computes each aggregate from a row that holds the accumulators, then writes each result back into that same row. The engine numbers variables per scope, starting from zero, so a result can land in the slot where a later aggregate's accumulator still sits, and that aggregate then reads the wrong value. `avg` keeps a list as its accumulator, so when it finds a number there instead, the engine panics.
+
+I removed the write and added a regression test. Then I built FalkorDB on a throwaway cloud VM to prove the fix. The new test fails without it, with exactly the wrong values I had predicted, and passes with it. So do FalkorDB's own end-to-end, TCK and Rust unit test suites. The bug is filed as [FalkorDB#3375](https://github.com/FalkorDB/FalkorDB/issues/3375), with the fix in [FalkorDB#3374](https://github.com/FalkorDB/FalkorDB/pull/3374).
+
 ## What I learned
 
-Three things stuck with me. Ask the graph for the one path you need, not every path: the difference between listing paths and `shortestPath` was the difference between a crashed database and an instant answer. "I don't know" has to be a first-class answer everywhere, from failed scans to exit codes, because the most dangerous bug in a tool like this is a false "safe". And a proof only matters once it lands in the tools people already use, which is why the Trivy number matters more to me than anything on my own dashboard.
+Four things stuck with me. Ask the graph for the one path you need, not every path: the difference between listing paths and `shortestPath` was the difference between a crashed database and an instant answer. "I don't know" has to be a first-class answer everywhere, from failed scans to exit codes, because the most dangerous bug in a tool like this is a false "safe". A proof only matters once it lands in the tools people already use, which is why the Trivy number matters more to me than anything on my own dashboard. And when a database hands you a number that can't be right, it's worth finding out why: my one odd sum turned out to be a bug in everyday GROUP BY queries that could also crash the server.
 
 ## What it doesn't claim
 

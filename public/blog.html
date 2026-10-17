@@ -41,7 +41,7 @@
 
       <main class="lp-wrap">
         <article class="lp-article">
-          <div class="lp-kicker">Blog · October 2026 · 11 min read</div>
+          <div class="lp-kicker">Blog · October 2026 · 13 min read</div>
           <h1>278 alerts, 65 provably safe: answering &quot;are we affected?&quot; with a graph</h1>
           <p class="lp-lede">Scanners flag every service that uses a vulnerable Go library. Clearance proves which ones actually reach the broken function, with call paths in a FalkorDB graph.</p>
           <figure class="lp-cover">
@@ -172,8 +172,13 @@ affected             @ c7e3bb6d   09:40   (fresh evidence)
 </tr>
 </tbody></table>
 <p>Sixty-five alerts that someone would otherwise have triaged by hand now come with a proof attached. The other 195 come with the line of code to look at and the name of the team that owns it.</p>
+<h2>A bug I found in FalkorDB itself</h2>
+<p>Clearance&#39;s advisory list counts verdicts per advisory with <code>sum(CASE …)</code>, grouped by four advisory properties. On FalkorDB 6.0.2 those sums came back equal to <code>count()</code>. I worked around it by aggregating on the advisory node first, then projecting the properties, and kept building. After submitting, I went back to it.</p>
+<p>I ran the same queries against three engines side by side: FalkorDB 6.0.2, the newest 6.x development build, and the older 4.22 C engine. It was much bigger than my one query. On the 6.x engine, any query that groups by more values than it has bound variables gets its later aggregates wrong. <code>MATCH (n:P) RETURN n.country, n.city, count(n), sum(n.age)</code> returns the count as the sum, and with <code>avg()</code> instead of <code>sum()</code> the query crashes the whole server. The 4.22 engine gets every case right.</p>
+<p>The cause was one line. When FalkorDB finishes a group, it computes each aggregate from a row that holds the accumulators, then writes each result back into that same row. The engine numbers variables per scope, starting from zero, so a result can land in the slot where a later aggregate&#39;s accumulator still sits, and that aggregate then reads the wrong value. <code>avg</code> keeps a list as its accumulator, so when it finds a number there instead, the engine panics.</p>
+<p>I removed the write and added a regression test. Then I built FalkorDB on a throwaway cloud VM to prove the fix. The new test fails without it, with exactly the wrong values I had predicted, and passes with it. So do FalkorDB&#39;s own end-to-end, TCK and Rust unit test suites. The bug is filed as <a href="https://github.com/FalkorDB/FalkorDB/issues/3375">FalkorDB#3375</a>, with the fix in <a href="https://github.com/FalkorDB/FalkorDB/pull/3374">FalkorDB#3374</a>.</p>
 <h2>What I learned</h2>
-<p>Three things stuck with me. Ask the graph for the one path you need, not every path: the difference between listing paths and <code>shortestPath</code> was the difference between a crashed database and an instant answer. &quot;I don&#39;t know&quot; has to be a first-class answer everywhere, from failed scans to exit codes, because the most dangerous bug in a tool like this is a false &quot;safe&quot;. And a proof only matters once it lands in the tools people already use, which is why the Trivy number matters more to me than anything on my own dashboard.</p>
+<p>Four things stuck with me. Ask the graph for the one path you need, not every path: the difference between listing paths and <code>shortestPath</code> was the difference between a crashed database and an instant answer. &quot;I don&#39;t know&quot; has to be a first-class answer everywhere, from failed scans to exit codes, because the most dangerous bug in a tool like this is a false &quot;safe&quot;. A proof only matters once it lands in the tools people already use, which is why the Trivy number matters more to me than anything on my own dashboard. And when a database hands you a number that can&#39;t be right, it&#39;s worth finding out why: my one odd sum turned out to be a bug in everyday GROUP BY queries that could also crash the server.</p>
 <h2>What it doesn&#39;t claim</h2>
 <p>Reachability is only as good as govulncheck&#39;s static analysis, and function-level data only exists for Go, which is why the fleet is Go. Standard-library verdicts assume the toolchain declared in <code>go.mod</code>, so a release pipeline that builds with a newer Go may already be fixed. The <code>CALLS</code> edges are govulncheck&#39;s evidence, the call stacks it found leading toward vulnerable code, not a full call graph. And only CODEOWNERS teams are stored; handles of individual people are dropped at ingest.</p>
 <h2>Try it</h2>
