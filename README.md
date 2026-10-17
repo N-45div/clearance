@@ -223,6 +223,14 @@ npm run build && npm start    # http://localhost:8080
 - `./...` includes example and test programs. A path that starts only in `examples/`, `tests/`, `tools/` and similar directories is marked `examples_tests_only`.
 - Two scans failed and are reported as under investigation instead of guessed: Alloy (govulncheck ran out of memory at 31 GB on `./...`, and its shipped binary is built from a separate `collector/` module) and Beyla (its packages need `go generate` for eBPF code before they type-check).
 
+## Found along the way: a bug in FalkorDB itself
+
+Clearance's advisory list counts verdicts with `sum(CASE …)` while grouping by four advisory properties, and on FalkorDB 6.0.2 those sums came back equal to `count()`. Clearance works around it by aggregating on the advisory node first ([`src/graph/fleet.ts`](src/graph/fleet.ts)).
+
+After the submission I traced it. On the 6.x engine, when a query groups by more values than it has bound variables, each aggregation's output is written into the slot a later aggregation's accumulator still uses. So `MATCH (n) RETURN n.country, n.city, count(n), sum(n.age)` returns the count as the sum, and the same query with `avg()` crashes the server.
+
+It's reported as [FalkorDB#3375](https://github.com/FalkorDB/FalkorDB/issues/3375). The one-line fix and a regression test are in [FalkorDB#3374](https://github.com/FalkorDB/FalkorDB/pull/3374), verified against FalkorDB's own test suites on a release build.
+
 ## Built with AI assistance
 
 Built in coordination with an AI coding assistant, Claude Code.
