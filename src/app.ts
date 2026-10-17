@@ -172,6 +172,7 @@ api.get("/cron/daily", async (c) => {
 app.route("/api", api);
 // The web app is static (public/, served by the CDN); its entry page is index.html.
 app.get("/", (c) => c.redirect("/index.html"));
+app.get("/blog", (c) => c.redirect("/blog.html"));
 app.onError((err, c) => {
   // The graph is gone (a free instance restarted): start one rebuild in the background and say so.
   if (isMissingGraph(err)) {

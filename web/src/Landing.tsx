@@ -148,6 +148,7 @@ export function Landing() {
             <a href="#how" className="hide-sm">How it works</a>
             <a href="#outputs" className="hide-sm">Outputs</a>
             <a href="#faq" className="hide-sm">FAQ</a>
+            <a href="/blog" className="hide-sm">Blog</a>
             <a href={REPO} target="_blank" rel="noreferrer">GitHub</a>
             <Pill />
           </nav>
@@ -304,6 +305,7 @@ export function Landing() {
         <nav>
           <a href={REPO} target="_blank" rel="noreferrer">GitHub</a>
           <a href={`${REPO}#readme`} target="_blank" rel="noreferrer">README</a>
+          <a href="/blog">Blog</a>
           <a href={APP}>The fleet</a>
         </nav>
       </footer>
