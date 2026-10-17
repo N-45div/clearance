@@ -37,8 +37,9 @@ export async function summary() {
 
 export async function advisories() {
   return read(
-    // Aggregate on the node, then project: on FalkorDB 6.0.2, grouping on four keys where one is a
-    // list makes every sum(CASE ...) return count() instead.
+    // Aggregate on the node, then project: on FalkorDB 6.0.x, grouping by more keys than the query
+    // binds variables makes each later aggregation read an earlier one's value, so these sums came
+    // back as count() (FalkorDB/FalkorDB#3375, fixed in #3374).
     `MATCH (v:Verdict {current: true})-[:ABOUT]->(a:Advisory) WHERE v.status <> 'fixed'
      WITH a, count(v) AS repos, ${STATUS_COUNTS}
      RETURN a.id AS id, a.summary AS summary, a.published AS published, a.aliases AS aliases,
