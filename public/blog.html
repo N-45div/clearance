@@ -1,0 +1,201 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>278 alerts, 65 provably safe: answering &quot;are we affected?&quot; with a graph · Clearance</title>
+    <meta name="description" content="Scanners flag every service that uses a vulnerable Go library. Clearance proves which ones actually reach the broken function, with call paths in a FalkorDB graph." />
+    <meta property="og:type" content="article" />
+    <meta property="og:title" content="278 alerts, 65 provably safe: answering &quot;are we affected?&quot; with a graph" />
+    <meta property="og:description" content="Scanners flag every service that uses a vulnerable Go library. Clearance proves which ones actually reach the broken function, with call paths in a FalkorDB graph." />
+    <meta property="og:url" content="https://clearance-lemon.vercel.app/blog" />
+    <meta property="og:image" content="https://clearance-lemon.vercel.app/blog-cover.jpg" />
+    <meta name="twitter:card" content="summary_large_image" />
+    <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath d='M12 2 4 5v6c0 5 3.4 9.7 8 11 4.6-1.3 8-6 8-11V5z' fill='%231F8F55'/%3E%3Cpath d='m8.5 12 2.5 2.5 4.5-5' stroke='white' stroke-width='2' fill='none' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E" />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600&family=Geist+Mono:wght@400;500&display=swap" rel="stylesheet" />
+    <script type="module" crossorigin src="/assets/styles-Bqxqch6R.js"></script>
+    <link rel="stylesheet" crossorigin href="/assets/styles-Ckv76w0h.css">
+    <link rel="stylesheet" crossorigin href="/assets/blog-N-wusAJN.css">
+  </head>
+  <body>
+    <div class="lp">
+      <header class="lp-nav">
+        <div class="lp-wrap">
+          <a class="lp-logo" href="/">
+            <svg width="22" height="22" viewBox="0 0 24 24" aria-hidden="true">
+              <path d="M12 2 4 5v6c0 5 3.4 9.7 8 11 4.6-1.3 8-6 8-11V5z" fill="var(--safe)" />
+              <path d="m8.5 12 2.5 2.5 4.5-5" stroke="white" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round" />
+            </svg>
+            Clearance
+          </a>
+          <nav class="lp-links">
+            <a href="/#how" class="hide-sm">How it works</a>
+            <a href="/blog" aria-current="page" class="hide-sm">Blog</a>
+            <a href="https://github.com/N-45div/clearance" target="_blank" rel="noreferrer">GitHub</a>
+            <a class="lp-pill" href="/#/advisories/GO-2026-6609">Open the live fleet</a>
+          </nav>
+        </div>
+      </header>
+
+      <main class="lp-wrap">
+        <article class="lp-article">
+          <div class="lp-kicker">Blog · October 2026 · 11 min read</div>
+          <h1>278 alerts, 65 provably safe: answering &quot;are we affected?&quot; with a graph</h1>
+          <p class="lp-lede">Scanners flag every service that uses a vulnerable Go library. Clearance proves which ones actually reach the broken function, with call paths in a FalkorDB graph.</p>
+          <figure class="lp-cover">
+            <img src="/blog-cover.jpg" width="1600" height="734" alt="Clearance in CI: the build fails on 20 advisories reachable from shipped code, and Trivy's findings drop from 308 to 243 with Clearance's OpenVEX" />
+          </figure>
+          <div class="lp-body">
+<p>A Go vulnerability landed this month: <a href="https://pkg.go.dev/vuln/GO-2026-6609">GO-2026-6609</a>. It&#39;s about <code>net/http</code> placing no limit on parsed Range headers. Across 20 of Grafana&#39;s open-source Go services, each pinned to an exact commit, a version-only scanner would flag 11 of them.</p>
+<p>That&#39;s the usual result. A scanner sees that your <code>go.mod</code> (or your Go toolchain) falls inside the advisory&#39;s version range, so it raises an alert. What it doesn&#39;t check is whether your code ever <em>calls</em> the broken function. So eleven teams each get a ticket, and each of them spends an afternoon finding out whether they actually need to do anything.</p>
+<p>For that one advisory, the real answer was three affected, seven not affected and one unknown. One of the three affected is only reachable through k6&#39;s <code>examples/secrets/mock_server.go</code>, so it&#39;s real but low priority. The seven have no call path at all from their code to the vulnerable function. The unknown one is a repo whose reachability scan failed, so nothing is claimed about it. Seven of the eleven alerts were noise. The trouble is that &quot;not affected&quot; is only worth something if you can prove it.</p>
+<p>During Graph Hacks (WeMakeDevs x <a href="https://www.falkordb.com">FalkorDB</a>) I built <strong>Clearance</strong> to produce that proof. For every service and every advisory it gives one of two answers. Either the service is <strong>affected</strong>, and you get the exact call path, the file and line where your code enters it, the team that owns that file, and the version to bump to. Or it&#39;s <strong>not affected</strong>, and you get the proof that no path exists, written as an <a href="https://github.com/openvex/spec">OpenVEX</a> statement you can ship.</p>
+<p>It&#39;s live at <a href="https://clearance-lemon.vercel.app">clearance-lemon.vercel.app</a>, and the code is at <a href="https://github.com/N-45div/clearance">github.com/N-45div/clearance</a> (MIT).</p>
+<h2>The question is a path</h2>
+<p>&quot;Is mimir affected by GO-2026-6609?&quot; sounds like a yes/no question. Really it&#39;s this question: <em>is there a chain of calls from mimir&#39;s own code to <code>net/http.fileHandler.ServeHTTP</code>?</em> That&#39;s a path question, and path questions belong in a graph.</p>
+<p>Clearance builds that graph from four public sources. Each repo&#39;s <code>go.mod</code> at its pinned commit gives the module versions it builds with and the Go toolchain it declares. OSV and the Go vulnerability database give the advisories, their version ranges, and the specific packages and functions that are vulnerable. <a href="https://go.dev/doc/security/vuln/">govulncheck</a>, run on each repo at its pinned commit, gives the call stacks that lead toward vulnerable code, and those become the reachability evidence. CODEOWNERS says which team owns the file where a path starts.</p>
+<p>All of it goes into one FalkorDB graph. Here&#39;s the core of the model:</p>
+<pre><code>(Repo)-[:REQUIRES|BUILT_WITH]-&gt;(ModuleVersion)-[:VULNERABLE_TO]-&gt;(Advisory)
+(Advisory)-[:VULNERABLE_FUNC]-&gt;(Func)
+(Repo)-[:ENTRY]-&gt;(Frame)-[:CALLS]-&gt;(Frame)-[:IS]-&gt;(Func)
+(Frame)-[:DEFINED_IN {line}]-&gt;(File)-[:OWNED_BY]-&gt;(Team)
+(Verdict)-[:FOR]-&gt;(Repo), (Verdict)-[:ABOUT]-&gt;(Advisory), (Verdict)-[:SUPERSEDES]-&gt;(Verdict)
+</code></pre>
+<p>A verdict comes out of it in three steps. First comes the blast radius: every repo with an edge to a module version the advisory covers. A version-only scanner stops here, and for this fleet that&#39;s 278 alerts across 50 advisories. Then comes reachability. For each of those repos, Clearance looks for a path from one of its entry points to a frame that govulncheck flagged as a call into a function the advisory names. If there is one, the repo is affected, and the shortest path that starts in shipped code is the evidence. If there&#39;s no path, the repo is not affected, and the justification depends on why. A repo that imports the vulnerable package but never reaches the vulnerable functions gets <code>vulnerable_code_not_in_execute_path</code>. A repo that requires the module but never imports the package gets <code>vulnerable_code_not_present</code>.</p>
+<p>The language model never decides a verdict. Verdicts come from Cypher; the model can only read them.</p>
+<h2>The night I took down the database</h2>
+<p>The first version of the reachability query was the obvious one: list every path, then sort.</p>
+<pre><code class="language-cypher">MATCH p = (e)-[:CALLS*0..30]-&gt;(t) ... ORDER BY length(p)
+</code></pre>
+<p>It worked fine on my laptop against FalkorDB 6.0.2 in Docker. Then I pointed it at the free FalkorDB Cloud instance, which has 100 MB of memory, and the instance went down.</p>
+<p>The cause is <code>net/http</code>&#39;s call chains. They branch a lot, so the number of distinct paths grows combinatorially, and asking for all of them so they can be sorted means holding all of them in memory. My next attempt was <code>algo.SPpaths</code> per entry/target pair. It crashed too.</p>
+<p>Two changes fixed it.</p>
+<p>The first was giving every repo its own frames. At first a function was a single shared <code>Func</code> node, and every <code>CALLS</code> edge carried a <code>repo</code> property that each path query had to filter on, so every traversal walked a graph shared by all twenty repos. Now each function appears once per repo as a <code>Frame</code> with key <code>repo|func</code>, and frames from different repos never connect. A path search for mimir can only ever touch mimir&#39;s evidence, and the query needs no edge filter.</p>
+<p>The second was asking for less. I only need one path per entry point, the shortest one, because that&#39;s what a human reads. <code>shortestPath</code> is a breadth-first search, so it stays small however much the chains branch. One FalkorDB detail I learned the hard way: <code>shortestPath</code> is only allowed in a <code>WITH</code> or <code>RETURN</code> clause, not in <code>MATCH</code>.</p>
+<pre><code class="language-cypher">MATCH (:Advisory {id: $advisory})-[:VULNERABLE_FUNC]-&gt;(:Func)&lt;-[:IS]-(t:Frame {repo: $repo, vulnerable: true})
+MATCH (:Repo {name: $repo})-[:ENTRY]-&gt;(e:Frame)
+WITH e, shortestPath((e)-[:CALLS*1..30]-&gt;(t)) AS p
+WHERE p IS NOT NULL
+OPTIONAL MATCH (e)-[:DEFINED_IN]-&gt;(file:File)
+RETURN [n IN nodes(p) | n.func] AS path, file.path AS entryFile, length(p) AS hops
+ORDER BY hops LIMIT 200
+</code></pre>
+<p>The <code>vulnerable: true</code> flag on the target frame matters as well. It restricts the targets to the frames govulncheck itself reported as the vulnerable call, rather than every frame that happens to share a function name.</p>
+<p>After the rewrite, the verdict counts were identical to those from the old query (278 / 195 / 65 / 18), and the Cloud instance stopped falling over.</p>
+<h2>What a verdict looks like</h2>
+<p>Here&#39;s mimir for GO-2026-6609, exactly as the graph returns it. mimir&#39;s own <code>pkg/api.activityTrackingMiddleware.ServeHTTP</code> calls <code>net/http.fileHandler.ServeHTTP</code> directly. That call sits in <code>pkg/api/activity_tracking.go</code> on line 72. CODEOWNERS gives that file to <code>@grafana/mimir-maintainers</code> (last match wins). The fix is to bump the Go toolchain from 1.26.7 to 1.26.9.</p>
+<p>And here&#39;s cloudcost-exporter, which imports <code>net/http</code> but never reaches the vulnerable code. This is its real OpenVEX statement:</p>
+<pre><code class="language-json">{
+  &quot;vulnerability&quot;: { &quot;name&quot;: &quot;GO-2026-6609&quot;, &quot;aliases&quot;: [&quot;CVE-2026-78667&quot;] },
+  &quot;products&quot;: [{ &quot;@id&quot;: &quot;pkg:github/grafana/cloudcost-exporter@cf188ae13581e853661fb9277da18319b7b993e7&quot; }],
+  &quot;status&quot;: &quot;not_affected&quot;,
+  &quot;justification&quot;: &quot;vulnerable_code_not_in_execute_path&quot;,
+  &quot;impact_statement&quot;: &quot;net/http is imported, but no call path from this repo&#39;s code reaches the vulnerable functions&quot;
+}
+</code></pre>
+<p>The product is pinned to an exact commit. That&#39;s deliberate, because the statement is only true for that commit.</p>
+<h2>&quot;I don&#39;t know&quot; is a verdict</h2>
+<p>The tempting shortcut is to treat &quot;no path found&quot; as &quot;safe&quot;. But &quot;no path found&quot; might only mean the analysis never ran.</p>
+<p>Two of the twenty scans failed. On Alloy, govulncheck ran out of memory at 31 GB on <code>./...</code>, and Alloy&#39;s shipped binary is built from a separate <code>collector/</code> module anyway. Beyla&#39;s packages need <code>go generate</code> to produce eBPF code before they even type-check.</p>
+<p>Clearance doesn&#39;t guess for these. Every verdict for those two repos is <code>under_investigation</code>, with the reason stated. The same applies when an advisory is newer than the vulnerability database the scan used. That accounts for 18 of the 278 alerts. They&#39;re never shown as safe, and the Ask agent is told never to present them as safe either.</p>
+<p>Paths that start only in <code>examples/</code>, <code>tests/</code> or <code>tools/</code> are marked <code>examples_tests_only</code>. They&#39;re still affected, but at a lower priority. That&#39;s the k6 case above.</p>
+<h2>Code moves; verdicts remember</h2>
+<p>A verdict is only true for a specific commit. So every verdict is stored as a <code>Verdict</code> node, and when the facts change (a new commit, a modified advisory, a different path), a new <code>Verdict</code> is linked to the old one with <code>SUPERSEDES</code>.</p>
+<p>I tested this for real on day two. I re-pinned mimir and k6 to their current heads. Their old call chains were dropped, and their verdicts immediately became <code>under_investigation: no reachability scan at this commit yet</code>. After a rescan on a spot VM, they were decided again. The history for mimir and GO-2026-6609 now reads:</p>
+<pre><code>affected             @ b082ea4f   09:28
+under_investigation  @ c7e3bb6d   09:34
+affected             @ c7e3bb6d   09:40   (fresh evidence)
+</code></pre>
+<p>None of this needs a separate audit log; it&#39;s all in the graph. A <strong>Changes</strong> tab shows the history across the whole fleet.</p>
+<h2>Letting agents in, read-only</h2>
+<p>There&#39;s a triage agent in the Ask tab, running on OpenAI. It picks from nine read-only graph tools, from <code>fleet_summary</code> and <code>blast_radius</code> to <code>evidence</code>, <code>fix_plan</code> and <code>team_inbox</code>, plus <code>run_cypher</code> for anything the others don&#39;t cover. Every answer lists the tools it used.</p>
+<p>The important design choice is that every query goes through <code>GRAPH.RO_QUERY</code>, so safety doesn&#39;t depend on the prompt. If the model writes a <code>CREATE</code> or <code>DELETE</code> into <code>run_cypher</code>, FalkorDB itself refuses it. <code>run_cypher</code> also gets a 5-second timeout and a 50-row cap.</p>
+<p>The same tools are exposed as an MCP server, so you can plug the graph into your own agent:</p>
+<pre><code class="language-sh">claude mcp add --transport http clearance https://clearance-lemon.vercel.app/api/mcp
+</code></pre>
+<h2>A proof only counts if your scanner applies it</h2>
+<p>Nobody is going to swap out their scanner for a demo. So the test that matters is whether the &quot;not affected&quot; proof actually reaches the tool people already run. Trivy reads OpenVEX through <code>--vex</code>, so I ran it on all 20 repos at the same pinned commits, once without Clearance&#39;s VEX and once with it:</p>
+<table>
+<thead>
+<tr>
+<th><code>trivy fs --detection-priority comprehensive</code> on each go.mod</th>
+<th>findings</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>without VEX</td>
+<td>308</td>
+</tr>
+<tr>
+<td>with Clearance&#39;s VEX</td>
+<td>243 (65 suppressed)</td>
+</tr>
+</tbody></table>
+<p>Getting there took two fixes, and both are worth knowing if you write VEX yourself. My first VEX named the product <code>pkg:github/grafana/mimir@&lt;sha&gt;</code>, and Trivy matched nothing, because Trivy matches a statement against the module it scanned plus the vulnerable package. So each statement now also names <code>pkg:golang/github.com/grafana/mimir</code>, with <code>pkg:golang/stdlib@v1.26.7</code> as a subcomponent, and the pinned-commit product is still there. The second surprise was that, by default, <code>trivy fs</code> on a go.mod doesn&#39;t report standard-library vulnerabilities at all. You need <code>--detection-priority comprehensive</code> to see them.</p>
+<p>The 65 suppressed findings are exactly the 65 that Clearance proved not affected. Repo by repo the counts match, and nothing affected or under investigation was suppressed. The numbers don&#39;t line up with 278 because Trivy counts one finding per affected package. Of its 308, 275 are the same (repo, advisory) pairs and 20 repeat one of those on another package. The last 13 are GitHub advisories with no Go vulnerability database record, such as six for kin-openapi published on Oct 15. Without the vulnerable functions there&#39;s nothing to trace, so Clearance gives those no verdict either way and says so.</p>
+<h2>On your own repo, in CI</h2>
+<p><code>npm run check</code> runs the same graph and the same queries on one checkout, in a throwaway graph on any FalkorDB. It runs govulncheck itself, or takes the JSON your CI already makes. It prints each affected path with its <code>file:line</code> and owning team, writes the OpenVEX file, and sets an exit code a CI job can gate on. It exits 1 when something is reachable from shipped code, 0 when nothing is, and 2 when the scan failed.</p>
+<p>That last case caught me out. With <code>-format json</code>, govulncheck exits 0 whether or not it finds anything. A failed run can still write a valid-looking file: Beyla&#39;s failed scan is a single config line, byte for byte the same shape as a clean scan with no findings. My first version of the command would have proven Beyla safe. It now requires govulncheck&#39;s exit code, and a non-zero one means &quot;under investigation&quot;, never &quot;not affected&quot;. On mimir at the fleet&#39;s commit, the command gives the same 14 verdicts as the fleet graph, field for field, in about nine seconds.</p>
+<p>Then I wired it into a GitHub Actions example that scans grafana/smtprelay on GitHub&#39;s own runners, with FalkorDB as a service container. The first real runs taught me two more things that no local test could have. First, govulncheck installed with <code>go install</code> isn&#39;t on the PATH until you add Go&#39;s bin directory. Second, govulncheck&#39;s real JSON output is a stream of indented objects, not one object per line. My parser had assumed one per line because my own scan script had compacted the output with <code>jq</code>. Now the job runs end to end. It finds 20 advisories reachable from shipped code, 7 not affected and 0 under investigation, fails the build with exit 1, and uploads the OpenVEX file as an artifact. The red build is the point: the gate caught vulnerabilities that are really reachable.</p>
+<h2>Running on the free tier</h2>
+<p>The live demo runs on Vercel plus the free FalkorDB Cloud tier, and that tier keeps nothing across a restart. So when a request finds the graph missing, the app takes a lock, rebuilds the graph from the public sources and the committed govulncheck scans, and answers &quot;being rebuilt&quot; to everyone else in the meantime. I tested it by deleting the production graph myself; it was back in about a minute.</p>
+<p>One more free-tier constraint: the Cloud user isn&#39;t allowed plain Redis commands like <code>INCR</code>, so the per-visitor rate-limit counters for the Ask tab are nodes in a separate small graph. Visitor IPs are stored only as salted hashes that expire.</p>
+<h2>The whole fleet</h2>
+<table>
+<thead>
+<tr>
+<th></th>
+<th></th>
+</tr>
+</thead>
+<tbody><tr>
+<td>Alerts a version-only scanner raises (repo × advisory)</td>
+<td><strong>278</strong></td>
+</tr>
+<tr>
+<td>Proven <strong>not affected</strong></td>
+<td><strong>65</strong></td>
+</tr>
+<tr>
+<td><strong>Affected</strong>, each with its call path</td>
+<td><strong>195</strong> (183 from shipped code, 12 only from examples)</td>
+</tr>
+<tr>
+<td>Under investigation (the scan failed, nothing claimed)</td>
+<td><strong>18</strong></td>
+</tr>
+<tr>
+<td>Pull requests that close every affected verdict</td>
+<td><strong>14</strong>, routed to <strong>10</strong> CODEOWNERS teams</td>
+</tr>
+</tbody></table>
+<p>Sixty-five alerts that someone would otherwise have triaged by hand now come with a proof attached. The other 195 come with the line of code to look at and the name of the team that owns it.</p>
+<h2>What I learned</h2>
+<p>Three things stuck with me. Ask the graph for the one path you need, not every path: the difference between listing paths and <code>shortestPath</code> was the difference between a crashed database and an instant answer. &quot;I don&#39;t know&quot; has to be a first-class answer everywhere, from failed scans to exit codes, because the most dangerous bug in a tool like this is a false &quot;safe&quot;. And a proof only matters once it lands in the tools people already use, which is why the Trivy number matters more to me than anything on my own dashboard.</p>
+<h2>What it doesn&#39;t claim</h2>
+<p>Reachability is only as good as govulncheck&#39;s static analysis, and function-level data only exists for Go, which is why the fleet is Go. Standard-library verdicts assume the toolchain declared in <code>go.mod</code>, so a release pipeline that builds with a newer Go may already be fixed. The <code>CALLS</code> edges are govulncheck&#39;s evidence, the call stacks it found leading toward vulnerable code, not a full call graph. And only CODEOWNERS teams are stored; handles of individual people are dropped at ingest.</p>
+<h2>Try it</h2>
+<p>The live fleet is at <a href="https://clearance-lemon.vercel.app">clearance-lemon.vercel.app</a>; open the console and pick GO-2026-6609. The code and every Cypher query are at <a href="https://github.com/N-45div/clearance">github.com/N-45div/clearance</a>. To run it on your own Go service:</p>
+<pre><code class="language-sh">npm run check -- --run --dir ../my-service --vex openvex.json
+trivy fs --detection-priority comprehensive --vex openvex.json ../my-service
+</code></pre>
+<p>Built in coordination with an AI coding assistant, Claude Code.</p>
+
+          </div>
+          <div class="lp-actions"><a class="lp-pill" href="/#/advisories/GO-2026-6609">Open the live fleet</a></div>
+        </article>
+      </main>
+
+      <footer class="lp-wrap lp-foot">
+        <span>Clearance · MIT · built for Graph Hacks (WeMakeDevs × FalkorDB), October 2026</span>
+        <nav>
+          <a href="https://github.com/N-45div/clearance" target="_blank" rel="noreferrer">GitHub</a>
+          <a href="https://github.com/N-45div/clearance#readme" target="_blank" rel="noreferrer">README</a>
+          <a href="/#/advisories/GO-2026-6609">The fleet</a>
+        </nav>
+      </footer>
+    </div>
+  </body>
+</html>
